@@ -81,11 +81,11 @@ export default function LoginScreen() {
             {/* Email Input */}
             <Text style={styles.label}>Email Address</Text>
             <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color="#9ca3af" style={styles.inputIcon} />
+              <Ionicons name="mail-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="name@company.com"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor="#94A3B8"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
@@ -101,11 +101,11 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color="#9ca3af" style={styles.inputIcon} />
+              <Ionicons name="lock-closed-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="••••••••"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor="#94A3B8"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -114,7 +114,7 @@ export default function LoginScreen() {
                 <Ionicons 
                   name={showPassword ? "eye-outline" : "eye-off-outline"} 
                   size={20} 
-                  color="#9ca3af" 
+                  color="#94A3B8" 
                   style={styles.eyeIcon} 
                 />
               </TouchableOpacity>
@@ -205,12 +205,12 @@ const styles = StyleSheet.create({
   logoBox: {
     width: 60,
     height: 60,
-    backgroundColor: '#0a4be5',
+    backgroundColor: '#0052CC',
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#0a4be5',
+    shadowColor: '#0052CC',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   brandTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#0a4be5',
+    color: '#0052CC',
     marginBottom: 4,
   },
   brandSubtitle: {
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 32,
     borderWidth: 1,
-    borderColor: '#f3f4f6',
+    borderColor: '#F1F5F9',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
   welcomeTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#0F172A',
     marginBottom: 6,
   },
   welcomeSubtitle: {
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: '#0F172A',
     marginBottom: 8,
   },
   inputContainer: {
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     fontSize: 15,
-    color: '#111827',
+    color: '#0F172A',
   },
   eyeIcon: {
     paddingHorizontal: 12,
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   forgotPassword: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#0a4be5',
+    color: '#0052CC',
   },
   rememberContainer: {
     flexDirection: 'row',
@@ -307,15 +307,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff'
   },
   checkboxChecked: {
-    backgroundColor: '#0a4be5',
-    borderColor: '#0a4be5',
+    backgroundColor: '#0052CC',
+    borderColor: '#0052CC',
   },
   rememberText: {
     fontSize: 14,
     color: '#4b5563',
   },
   signInButton: {
-    backgroundColor: '#0a4be5',
+    backgroundColor: '#0052CC',
     height: 48,
     borderRadius: 8,
     justifyContent: 'center',
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     fontSize: 12,
     fontWeight: '600',
-    color: '#9ca3af',
+    color: '#94A3B8',
     letterSpacing: 1,
   },
   socialButtonsContainer: {
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   requestAccessText: {
-    color: '#0a4be5',
+    color: '#0052CC',
     fontWeight: '600',
   },
   footerLinks: {
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   },
   footerLinkText: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#64748B',
     fontWeight: '500',
   }
 });

@@ -42,7 +42,8 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": false
+      "reactCompiler": false,
+      "baseUrl": "/Sales-invoice-frontend"
     }
   }
 }

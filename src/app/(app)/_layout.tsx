@@ -5,8 +5,8 @@ export default function AppLayout() {
   return (
     <Tabs screenOptions={{ 
       headerShown: true,
-      tabBarActiveTintColor: '#0a4be5',
-      headerStyle: { backgroundColor: '#0a4be5' },
+      tabBarActiveTintColor: '#0052CC',
+      headerStyle: { backgroundColor: '#0052CC' },
       headerTintColor: '#fff',
     }}>
       <Tabs.Screen 
@@ -34,14 +34,14 @@ export default function AppLayout() {
         name="products" 
         options={{ 
           title: 'Products',
-          tabBarIcon: ({ color }) => <Ionicons name="cube" size={24} color={color} />
+          tabBarIcon: ({ color }: { color: string }) => <Ionicons name="cube" size={24} color={color} />
         }} 
       />
       <Tabs.Screen 
         name="reports" 
         options={{ 
           title: 'Reports',
-          tabBarIcon: ({ color }) => <Ionicons name="pie-chart" size={24} color={color} />
+          tabBarIcon: ({ color }: { color: string }) => <Ionicons name="pie-chart" size={24} color={color} />
         }} 
       />
     </Tabs>

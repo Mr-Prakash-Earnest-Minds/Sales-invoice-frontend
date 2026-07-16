@@ -6,22 +6,25 @@ import { useFocusEffect } from 'expo-router';
 
 export default function InvoicesScreen() {
   const [modalVisible, setModalVisible] = useState(false);
-  const [invoices, setInvoices] = useState([]);
-  const [availableProducts, setAvailableProducts] = useState([]);
-  const [availableCustomers, setAvailableCustomers] = useState([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<any[]>([]);
+  const [availableCustomers, setAvailableCustomers] = useState<any[]>([]);
   const [customerSearchFocused, setCustomerSearchFocused] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<string | number | null>(null);
   const [isViewMode, setIsViewMode] = useState(false);
 
   const [customerName, setCustomerName] = useState('');
+  const [customerState, setCustomerState] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [remarks, setRemarks] = useState('');
   const [discount, setDiscount] = useState('0');
   const [amountPaid, setAmountPaid] = useState('');
   const [previouslyPaid, setPreviouslyPaid] = useState(0);
   const [items, setItems] = useState([
     { id: '1', productName: '', qty: '1', price: '', gst: '0' }
   ]);
-  const [activeSearchId, setActiveSearchId] = useState(null);
+  const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -69,13 +72,20 @@ export default function InvoicesScreen() {
       .catch(err => console.error(err));
   };
 
-  const sortMatches = (list, query, key) => {
+  const sortMatches = (list: any[], query: string, key: string) => {
     if (!query) return [];
     const q = query.toLowerCase();
-    return list.filter(item => item[key].toLowerCase().includes(q))
+    
+    const getValue = (item: any) => {
+      let val = item[key];
+      if (!val && key === 'name') val = item.customer_name;
+      return String(val || '').toLowerCase();
+    };
+
+    return list.filter(item => getValue(item).includes(q))
       .sort((a, b) => {
-        const aStarts = a[key].toLowerCase().startsWith(q);
-        const bStarts = b[key].toLowerCase().startsWith(q);
+        const aStarts = getValue(a).startsWith(q);
+        const bStarts = getValue(b).startsWith(q);
         if (aStarts && !bStarts) return -1;
         if (!aStarts && bStarts) return 1;
         return 0;
@@ -86,6 +96,9 @@ export default function InvoicesScreen() {
     setEditingId(null);
     setIsViewMode(false);
     setCustomerName('');
+    setCustomerState('');
+    setPaymentMethod('Cash');
+    setRemarks('');
     setDiscount('0');
     setAmountPaid('');
     setPreviouslyPaid(0);
@@ -95,7 +108,7 @@ export default function InvoicesScreen() {
     setModalVisible(true);
   };
 
-  const openEditModal = async (id, viewOnly = false) => {
+  const openEditModal = async (id: string | number, viewOnly = false) => {
     try {
       const res = await fetch(`${API_URL}/api/invoices/${id}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -105,6 +118,13 @@ export default function InvoicesScreen() {
         setEditingId(id);
         setIsViewMode(viewOnly);
         setCustomerName(data.data.customer_name || '');
+        if (Number(data.data.igst) > 0) {
+          setCustomerState('Other');
+        } else {
+          setCustomerState('Tamil Nadu');
+        }
+        setPaymentMethod(data.data.payment_method || 'Cash');
+        setRemarks(data.data.remarks || '');
         
         // Calculate discount from saved totals since we don't store it explicitly
         const savedSubtotal = Number(data.data.subtotal) || 0;
@@ -129,7 +149,7 @@ export default function InvoicesScreen() {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: string | number) => {
     const executeDelete = async () => {
       try {
         const res = await fetch(`${API_URL}/api/invoices/${id}`, {
@@ -163,22 +183,22 @@ export default function InvoicesScreen() {
     setItems([...items, { id: Date.now().toString(), productName: '', qty: '1', price: '', gst: '0' }]);
   };
 
-  const handleRemoveItem = (idToRemove) => {
+  const handleRemoveItem = (idToRemove: string) => {
     if (items.length === 1) return;
     setItems(items.filter(item => item.id !== idToRemove));
   };
 
-  const handleItemChange = (id, field, value) => {
+  const handleItemChange = (id: string, field: string, value: string) => {
     setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
     if (field === 'productName') {
       setActiveSearchId(id);
     }
   };
 
-  const selectProduct = (itemId, product) => {
+  const selectProduct = (itemId: string, product: any) => {
     setItems(items.map(item => 
       item.id === itemId 
-        ? { ...item, productName: product.product_name, price: product.price.toString(), gst: (product.gst_percentage || 0).toString() } 
+        ? { ...item, productName: product.product_name, price: product.price.toString(), gst: (product.gst_rate || product.gst_percentage || 0).toString() } 
         : item
     ));
     setActiveSearchId(null);
@@ -186,7 +206,7 @@ export default function InvoicesScreen() {
 
   const subtotal = items.reduce((sum, item) => sum + (Number(item.qty) * Number(item.price) || 0), 0);
   
-  const gstBreakdown = {};
+  const gstBreakdown: { [key: number]: number } = {};
   items.forEach(item => {
     const itemTotal = (Number(item.qty) * Number(item.price)) || 0;
     const gstRate = Number(item.gst) || 0;
@@ -196,13 +216,36 @@ export default function InvoicesScreen() {
     }
   });
 
-  const tax = Object.values(gstBreakdown).reduce((sum, val) => sum + val, 0);
-  const discountVal = Number(discount) || 0;
-  const grandTotal = subtotal - discountVal + tax;
+  const tax = Object.values(gstBreakdown).reduce((sum: number, val: number) => sum + val, 0);
+  
+  const companyState = 'Tamil Nadu'; // Set company state here
+  const isInterState = customerState && customerState.trim().toLowerCase() !== companyState.toLowerCase();
 
+  const cgst = isInterState ? 0 : tax / 2;
+  const sgst = isInterState ? 0 : tax / 2;
+  const igst = isInterState ? tax : 0;
+
+  const discountVal = Number(discount) || 0;
+  const unroundedTotal = subtotal - discountVal + tax;
+  const grandTotal = Math.round(unroundedTotal);
+  const roundOff = grandTotal - unroundedTotal;
   const handleSave = async () => {
-    if (!customerName.trim()) {
-      Alert.alert('Validation Error', 'Please enter a customer name.');
+    if (!String(customerName).trim()) {
+      if (Platform.OS === 'web') {
+        window.alert('Validation Error: Please select or enter a Customer Name.');
+      } else {
+        Alert.alert('Validation Error', 'Please select or enter a Customer Name.');
+      }
+      return;
+    }
+
+    const isValidItems = items.every(item => String(item.productName).trim() !== '' && String(item.qty).trim() !== '' && String(item.price).trim() !== '');
+    if (!isValidItems || items.length === 0) {
+      if (Platform.OS === 'web') {
+        window.alert('Validation Error: Please fill the Product Name, Qty, and Price for every item.');
+      } else {
+        Alert.alert('Validation Error', 'Please fill the Product Name, Qty, and Price for every item.');
+      }
       return;
     }
     
@@ -225,9 +268,16 @@ export default function InvoicesScreen() {
           return {
             customer_name: customerName,
             subtotal,
+            cgst,
+            sgst,
+            igst,
+            discount: discountVal,
+            round_off: roundOff,
             tax,
             grand_total: grandTotal,
+            payment_method: paymentMethod,
             payment_status: paymentStatus,
+            remarks: remarks,
             amount_paid: totalPaid,
             balance_due: balanceDue <= 0 ? 0 : balanceDue,
             items: items.filter(i => i.productName && Number(i.qty) > 0)
@@ -247,7 +297,7 @@ export default function InvoicesScreen() {
     }
   };
 
-  const renderInvoiceItem = ({ item }) => {
+  const renderInvoiceItem = ({ item }: { item: any }) => {
     const date = new Date(item.invoice_date).toLocaleDateString();
     return (
       <TouchableOpacity style={styles.card} onPress={() => openEditModal(item.id, true)} activeOpacity={0.7}>
@@ -266,7 +316,7 @@ export default function InvoicesScreen() {
           )}
         </View>
         <View style={styles.actionButtons}>
-          <Ionicons name="pencil" size={20} color="#0a4be5" style={{ marginBottom: 12 }} onPress={() => openEditModal(item.id, false)} />
+          <Ionicons name="pencil" size={20} color="#0052CC" style={{ marginBottom: 12 }} onPress={() => openEditModal(item.id, false)} />
           <Ionicons name="trash" size={20} color="#ef4444" onPress={() => handleDelete(item.id)} />
         </View>
       </TouchableOpacity>
@@ -284,7 +334,7 @@ export default function InvoicesScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#0a4be5" style={{marginTop: 50}} />
+        <ActivityIndicator size="large" color="#0052CC" style={{marginTop: 50}} />
       ) : invoices.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={64} color="#d1d5db" />
@@ -306,11 +356,11 @@ export default function InvoicesScreen() {
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#F1F5F9' }}>
           <ScrollView style={styles.modalContainer} keyboardShouldPersistTaps="handled">
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={28} color="#1f2937" />
+                <Ionicons name="close" size={28} color="#0F172A" />
               </TouchableOpacity>
               <Text style={styles.modalHeaderTitle}>{isViewMode ? 'View Invoice' : (editingId ? 'Edit Invoice' : 'New Invoice')}</Text>
               <View style={{ width: 28 }} />
@@ -320,8 +370,8 @@ export default function InvoicesScreen() {
               <Text style={styles.sectionTitle}>Customer Details</Text>
               <View style={{ marginBottom: 4 }}>
                 <Text style={styles.label}>Customer Name</Text>
-                <TextInput 
-                  style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} 
+                <TextInput placeholderTextColor="#94A3B8" 
+                  style={[styles.input, isViewMode && { backgroundColor: '#F1F5F9', color: '#64748B' }]} 
                   placeholder="Start typing customer name..." 
                   value={customerName} 
                   onChangeText={setCustomerName}
@@ -333,10 +383,11 @@ export default function InvoicesScreen() {
                   <View style={styles.dropdown}>
                     {(customerName ? sortMatches(availableCustomers, customerName, 'name') : availableCustomers).slice(0, 5).map(cust => (
                       <TouchableOpacity key={cust.id} style={styles.dropdownItem} onPress={() => {
-                        setCustomerName(cust.name);
+                        setCustomerName(cust.customer_name || cust.name);
+                        setCustomerState(cust.state || '');
                         setCustomerSearchFocused(false);
                       }}>
-                        <Text style={styles.dropdownItemText}>{cust.name}</Text>
+                        <Text style={styles.dropdownItemText}>{cust.customer_name || cust.name}</Text>
                         <Text style={styles.dropdownItemSubtitle}>{cust.phone || cust.email || ''}</Text>
                       </TouchableOpacity>
                     ))}
@@ -348,8 +399,16 @@ export default function InvoicesScreen() {
             <View style={styles.formCard}>
               <Text style={styles.sectionTitle}>Invoice Items</Text>
               {items.map((item, index) => {
+                const otherSelectedProductNames = items
+                  .filter(i => i.id !== item.id && (i.productName || '').trim() !== '')
+                  .map(i => (i.productName || '').trim().toLowerCase());
+
+                const filteredProducts = availableProducts.filter(p => 
+                  !otherSelectedProductNames.includes(String(p.product_name || '').trim().toLowerCase())
+                );
+
                 const searchResults = activeSearchId === item.id
-                  ? (item.productName ? sortMatches(availableProducts, item.productName, 'product_name') : availableProducts)
+                  ? (item.productName ? sortMatches(filteredProducts, item.productName, 'product_name') : filteredProducts)
                   : [];
 
                 return (
@@ -365,8 +424,8 @@ export default function InvoicesScreen() {
 
                     <View style={{ marginBottom: 12 }}>
                       <Text style={styles.label}>Product</Text>
-                      <TextInput 
-                        style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} 
+                      <TextInput placeholderTextColor="#94A3B8" 
+                        style={[styles.input, isViewMode && { backgroundColor: '#F1F5F9', color: '#64748B' }]} 
                         placeholder="Start typing product name..." 
                         value={item.productName} 
                         onChangeText={(val) => handleItemChange(item.id, 'productName', val)}
@@ -389,24 +448,24 @@ export default function InvoicesScreen() {
                     <View style={styles.row}>
                       <View style={{ flex: 1, marginRight: 8 }}>
                         <Text style={styles.label}>Qty</Text>
-                        <TextInput 
-                          style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} placeholder="1" keyboardType="numeric" 
+                        <TextInput placeholderTextColor="#94A3B8" 
+                          style={[styles.input, isViewMode && { backgroundColor: '#F1F5F9', color: '#64748B' }]} placeholder="1" keyboardType="numeric" 
                           value={item.qty} onChangeText={(val) => handleItemChange(item.id, 'qty', val)} 
                           editable={!isViewMode}
                         />
                       </View>
                       <View style={{ flex: 1, marginRight: 8 }}>
                         <Text style={styles.label}>Price (₹)</Text>
-                        <TextInput 
-                          style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} placeholder="0.00" keyboardType="numeric" 
+                        <TextInput placeholderTextColor="#94A3B8" 
+                          style={[styles.input, isViewMode && { backgroundColor: '#F1F5F9', color: '#64748B' }]} placeholder="0.00" keyboardType="numeric" 
                           value={item.price} onChangeText={(val) => handleItemChange(item.id, 'price', val)} 
                           editable={!isViewMode}
                         />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.label}>GST (%)</Text>
-                        <TextInput 
-                          style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} placeholder="0" keyboardType="numeric" 
+                        <TextInput placeholderTextColor="#94A3B8" 
+                          style={[styles.input, isViewMode && { backgroundColor: '#F1F5F9', color: '#64748B' }]} placeholder="0" keyboardType="numeric" 
                           value={item.gst} onChangeText={(val) => handleItemChange(item.id, 'gst', val)} 
                           editable={!isViewMode}
                         />
@@ -418,7 +477,7 @@ export default function InvoicesScreen() {
 
               {!isViewMode && (
                 <TouchableOpacity style={styles.addItemBtn} onPress={handleAddItem}>
-                  <Ionicons name="add-circle-outline" size={20} color="#0a4be5" />
+                  <Ionicons name="add-circle-outline" size={20} color="#0052CC" />
                   <Text style={styles.addItemText}>Add Another Item</Text>
                 </TouchableOpacity>
               )}
@@ -434,8 +493,8 @@ export default function InvoicesScreen() {
               
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Discount</Text>
-                <TextInput 
-                  style={[styles.input, { width: 100, height: 35, padding: 4, textAlign: 'right', backgroundColor: '#fff' }, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} 
+                <TextInput placeholderTextColor="#94A3B8" 
+                  style={[styles.input, { width: 100, height: 35, padding: 4, textAlign: 'right', backgroundColor: '#fff' }, isViewMode && { backgroundColor: '#F1F5F9', color: '#64748B' }]} 
                   keyboardType="numeric"
                   value={discount}
                   onChangeText={setDiscount}
@@ -445,7 +504,7 @@ export default function InvoicesScreen() {
 
               {Object.keys(gstBreakdown).length > 0 && (
                 <View style={{ marginTop: 12, marginBottom: 4 }}>
-                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#6b7280', marginBottom: 4 }}>GST Breakdown</Text>
+                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#64748B', marginBottom: 4 }}>GST Breakdown</Text>
                   <View style={{ borderTopWidth: 1, borderTopColor: '#e5e7eb', borderStyle: 'dashed', marginBottom: 6 }} />
                   {Object.entries(gstBreakdown).map(([rate, amount]) => (
                     <View key={rate} style={styles.summaryRow}>
@@ -462,23 +521,55 @@ export default function InvoicesScreen() {
                 <Text style={[styles.summaryValue, { fontWeight: '600' }]}>₹ {tax.toFixed(2)}</Text>
               </View>
 
+              {tax > 0 && (
+                <View style={{ marginBottom: 8 }}>
+                  {!isInterState ? (
+                    <>
+                      <View style={[styles.summaryRow, { marginTop: 4 }]}>
+                        <Text style={[styles.summaryLabel, { fontSize: 12, color: '#64748B' }]}>  ↳ CGST</Text>
+                        <Text style={[styles.summaryValue, { fontSize: 12, color: '#64748B' }]}>₹ {cgst.toFixed(2)}</Text>
+                      </View>
+                      <View style={[styles.summaryRow, { marginTop: 2 }]}>
+                        <Text style={[styles.summaryLabel, { fontSize: 12, color: '#64748B' }]}>  ↳ SGST</Text>
+                        <Text style={[styles.summaryValue, { fontSize: 12, color: '#64748B' }]}>₹ {sgst.toFixed(2)}</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={[styles.summaryRow, { marginTop: 4 }]}>
+                      <Text style={[styles.summaryLabel, { fontSize: 12, color: '#64748B' }]}>  ↳ IGST</Text>
+                      <Text style={[styles.summaryValue, { fontSize: 12, color: '#64748B' }]}>₹ {igst.toFixed(2)}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
               <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: '#e5e7eb', paddingTop: 12, marginTop: 8 }]}>
-                <Text style={[styles.summaryLabel, { fontWeight: 'bold', color: '#111827' }]}>Grand Total</Text>
-                <Text style={[styles.summaryValue, { fontWeight: 'bold', color: '#0a4be5', fontSize: 18 }]}>
+                <Text style={[styles.summaryLabel, { fontWeight: 'bold', color: '#0F172A' }]}>Round Off</Text>
+                <Text style={[styles.summaryValue, { fontWeight: 'bold', color: '#64748B' }]}>
+                  {roundOff > 0 ? '+' : ''}{roundOff.toFixed(2)}
+                </Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { fontWeight: 'bold', color: '#0F172A' }]}>Grand Total</Text>
+                <Text style={[styles.summaryValue, { fontWeight: 'bold', color: '#0052CC', fontSize: 18 }]}>
                   ₹ {grandTotal.toFixed(2)}
                 </Text>
               </View>
 
               <View style={{ marginTop: 16, backgroundColor: '#f9fafb', padding: 12, borderRadius: 8 }}>
+                <Text style={[styles.summaryLabel, { fontWeight: 'bold', marginBottom: 6 }]}>Payment Details</Text>
+                
+
                 {previouslyPaid > 0 && (
                   <View style={[styles.summaryRow, { marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }]}>
-                    <Text style={[styles.summaryLabel, { color: '#059669' }]}>Previously Paid</Text>
-                    <Text style={[styles.summaryValue, { color: '#059669' }]}>₹ {previouslyPaid.toFixed(2)}</Text>
+                    <Text style={[styles.summaryLabel, { color: '#14B8A6' }]}>Previously Paid</Text>
+                    <Text style={[styles.summaryValue, { color: '#14B8A6' }]}>₹ {previouslyPaid.toFixed(2)}</Text>
                   </View>
                 )}
                 <View style={styles.summaryRow}>
                   <Text style={[styles.summaryLabel, { fontWeight: '600' }]}>{previouslyPaid > 0 ? 'Add New Payment' : 'Amount Paid'}</Text>
-                  <TextInput 
+                  <TextInput placeholderTextColor="#94A3B8" 
                     style={[styles.input, { width: 120, height: 40, padding: 8, textAlign: 'right', backgroundColor: '#fff', fontSize: 16 }]} 
                     keyboardType="numeric"
                     placeholder="0.00"
@@ -529,49 +620,50 @@ export default function InvoicesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3f4f6', padding: 16 },
+  container: { flex: 1, backgroundColor: '#F1F5F9', padding: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#1f2937' },
-  addBtn: { flexDirection: 'row', backgroundColor: '#0a4be5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#0F172A' },
+  addBtn: { flexDirection: 'row', backgroundColor: '#0052CC', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
   addBtnText: { color: '#fff', fontWeight: 'bold', marginLeft: 4 },
   
   card: { backgroundColor: '#fff', padding: 16, borderRadius: 10, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', elevation: 1 },
-  name: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+  name: { fontSize: 16, fontWeight: 'bold', color: '#0F172A' },
   subText: { fontSize: 14, color: '#4b5563', marginTop: 4 },
-  dateText: { fontSize: 12, color: '#9ca3af', marginTop: 4 },
+  dateText: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
   price: { fontSize: 16, fontWeight: 'bold', color: '#2563eb' },
+  amount: { fontSize: 16, fontWeight: 'bold', color: '#14B8A6' },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, fontSize: 12, fontWeight: '600', marginTop: 8, overflow: 'hidden', textAlign: 'center' },
   statusPaid: { backgroundColor: '#dcfce7', color: '#166534' },
   statusPending: { backgroundColor: '#fef3c7', color: '#92400e' },
-  actionButtons: { alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#f3f4f6', paddingLeft: 16 },
+  actionButtons: { alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#F1F5F9', paddingLeft: 16 },
   
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 18, fontWeight: 'bold', color: '#4b5563', marginTop: 16 },
-  emptySubText: { fontSize: 14, color: '#9ca3af', marginTop: 8 },
+  emptySubText: { fontSize: 14, color: '#94A3B8', marginTop: 8 },
 
-  modalContainer: { flex: 1, backgroundColor: '#f3f4f6' },
+  modalContainer: { flex: 1, backgroundColor: '#F1F5F9' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#fff', elevation: 2 },
-  modalHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#1f2937' },
+  modalHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#0F172A' },
   formCard: { backgroundColor: '#fff', margin: 16, marginBottom: 0, padding: 16, borderRadius: 12, elevation: 1 },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827', marginBottom: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#0F172A', marginBottom: 16 },
   label: { fontSize: 13, color: '#4b5563', marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 10, fontSize: 15, color: '#111827', backgroundColor: '#f9fafb' },
+  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 10, fontSize: 15, color: '#0F172A', backgroundColor: '#f9fafb' },
   
   dropdown: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, marginTop: 4, elevation: 3, zIndex: 10 },
-  dropdownItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  dropdownItemText: { fontSize: 15, color: '#111827' },
-  dropdownItemPrice: { fontSize: 14, color: '#059669', fontWeight: 'bold' },
-  dropdownItemSubtitle: { fontSize: 12, color: '#6b7280' },
+  dropdownItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  dropdownItemText: { fontSize: 15, color: '#0F172A' },
+  dropdownItemPrice: { fontSize: 14, color: '#14B8A6', fontWeight: 'bold' },
+  dropdownItemSubtitle: { fontSize: 12, color: '#64748B' },
   
-  itemContainer: { marginBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', paddingBottom: 16 },
+  itemContainer: { marginBottom: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 16 },
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  itemNumber: { fontSize: 14, fontWeight: 'bold', color: '#6b7280' },
+  itemNumber: { fontSize: 14, fontWeight: 'bold', color: '#64748B' },
   row: { flexDirection: 'row' },
-  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderWidth: 1, borderColor: '#0a4be5', borderStyle: 'dashed', borderRadius: 8, marginTop: 8 },
-  addItemText: { color: '#0a4be5', fontWeight: '600', marginLeft: 8 },
+  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderWidth: 1, borderColor: '#0052CC', borderStyle: 'dashed', borderRadius: 8, marginTop: 8 },
+  addItemText: { color: '#0052CC', fontWeight: '600', marginLeft: 8 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   summaryLabel: { color: '#4b5563', fontSize: 14 },
-  summaryValue: { color: '#111827', fontSize: 14, fontWeight: '500' },
-  saveBtn: { backgroundColor: '#0a4be5', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
+  summaryValue: { color: '#0F172A', fontSize: 14, fontWeight: '500' },
+  saveBtn: { backgroundColor: '#0052CC', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });

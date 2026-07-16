@@ -16,6 +16,10 @@ export default function ProductsScreen() {
   const [price, setPrice] = useState('');
   const [gst, setGst] = useState('18');
   const [stock, setStock] = useState('0');
+  const [hsnCode, setHsnCode] = useState('');
+  const [unit, setUnit] = useState('pcs');
+  const [category, setCategory] = useState('');
+  const [description, setDescription] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -42,20 +46,25 @@ export default function ProductsScreen() {
   const openCreateModal = () => {
     setEditingId(null);
     setName(''); setSku(''); setPrice(''); setGst('18'); setStock('0');
+    setHsnCode(''); setUnit('pcs'); setCategory(''); setDescription('');
     setModalVisible(true);
   };
 
-  const openEditModal = (item) => {
+  const openEditModal = (item: any) => {
     setEditingId(item.id);
     setName(item.product_name || '');
     setSku(item.sku || '');
     setPrice(item.price ? item.price.toString() : '');
-    setGst(item.gst_percentage ? item.gst_percentage.toString() : '18');
+    setGst(item.gst_rate ? item.gst_rate.toString() : (item.gst_percentage ? item.gst_percentage.toString() : '18'));
     setStock(item.stock_quantity ? item.stock_quantity.toString() : '0');
+    setHsnCode(item.hsn_code || '');
+    setUnit(item.unit || 'pcs');
+    setCategory(item.category || '');
+    setDescription(item.description || '');
     setModalVisible(true);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = (id: string | number) => {
     const executeDelete = async () => {
       try {
         const res = await fetch(`${API_URL}/api/products/${id}`, {
@@ -86,8 +95,12 @@ export default function ProductsScreen() {
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !price.trim()) {
-      Alert.alert('Validation Error', 'Product Name and Price are required');
+    if (!String(name).trim() || !String(price).trim()) {
+      if (Platform.OS === 'web') {
+        window.alert('Validation Error: Product Name and Price are required.');
+      } else {
+        Alert.alert('Validation Error', 'Product Name and Price are required.');
+      }
       return;
     }
     
@@ -103,7 +116,10 @@ export default function ProductsScreen() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ product_name: name, sku, price: Number(price), gst_percentage: Number(gst), stock_quantity: Number(stock), unit: 'pcs' })
+        body: JSON.stringify({ 
+          product_name: name, sku, price: Number(price), gst_rate: Number(gst), 
+          stock_quantity: Number(stock), unit, hsn_code: hsnCode, category, description 
+        })
       });
       const data = await res.json();
       if (data.success) {
@@ -128,10 +144,10 @@ export default function ProductsScreen() {
       </View>
       <View style={{ alignItems: 'flex-end', justifyContent: 'center', marginRight: 16 }}>
         <Text style={styles.price}>₹{item.price}</Text>
-        <Text style={styles.gstText}>+ {item.gst_percentage}% GST</Text>
+        <Text style={styles.gstText}>+ {item.gst_rate || item.gst_percentage || 0}% GST</Text>
       </View>
       <View style={styles.actionButtons}>
-        <Ionicons name="pencil" size={20} color="#0a4be5" style={{ marginBottom: 12 }} onPress={() => openEditModal(item)} />
+        <Ionicons name="pencil" size={20} color="#0052CC" style={{ marginBottom: 12 }} onPress={() => openEditModal(item)} />
         <Ionicons name="trash" size={20} color="#ef4444" onPress={() => handleDelete(item.id)} />
       </View>
     </TouchableOpacity>
@@ -148,7 +164,7 @@ export default function ProductsScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#0a4be5" style={{marginTop: 50}} />
+        <ActivityIndicator size="large" color="#0052CC" style={{marginTop: 50}} />
       ) : (
         <FlatList 
           data={products}
@@ -166,11 +182,11 @@ export default function ProductsScreen() {
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#F1F5F9' }}>
           <ScrollView style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={28} color="#1f2937" />
+                <Ionicons name="close" size={28} color="#0F172A" />
               </TouchableOpacity>
               <Text style={styles.modalHeaderTitle}>{editingId ? 'Edit Product' : 'Add New Product'}</Text>
               <View style={{ width: 28 }} />
@@ -178,29 +194,46 @@ export default function ProductsScreen() {
 
             <View style={styles.formCard}>
               <Text style={styles.label}>Product Name *</Text>
-              <TextInput style={styles.input} placeholder="e.g. Mechanical Keyboard" value={name} onChangeText={setName} />
+              <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. Mechanical Keyboard" value={name} onChangeText={setName} />
 
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.label}>Price (₹) *</Text>
-                  <TextInput style={styles.input} placeholder="0.00" keyboardType="numeric" value={price} onChangeText={setPrice} />
+                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="0.00" keyboardType="numeric" value={price} onChangeText={setPrice} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>GST (%)</Text>
-                  <TextInput style={styles.input} placeholder="18" keyboardType="numeric" value={gst} onChangeText={setGst} />
+                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="18" keyboardType="numeric" value={gst} onChangeText={setGst} />
                 </View>
               </View>
 
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.label}>SKU (Optional)</Text>
-                  <TextInput style={styles.input} placeholder="PRD-001" value={sku} onChangeText={setSku} />
+                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="PRD-001" value={sku} onChangeText={setSku} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Initial Stock</Text>
-                  <TextInput style={styles.input} placeholder="0" keyboardType="numeric" value={stock} onChangeText={setStock} />
+                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="0" keyboardType="numeric" value={stock} onChangeText={setStock} />
                 </View>
               </View>
+
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.label}>HSN Code</Text>
+                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. 8471" value={hsnCode} onChangeText={setHsnCode} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Unit</Text>
+                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="pcs, kg, ltr" value={unit} onChangeText={setUnit} />
+                </View>
+              </View>
+
+              <Text style={styles.label}>Category</Text>
+              <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. Electronics" value={category} onChangeText={setCategory} />
+
+              <Text style={styles.label}>Description</Text>
+              <TextInput placeholderTextColor="#94A3B8" style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]} placeholder="Product details..." multiline value={description} onChangeText={setDescription} />
             </View>
 
             <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
@@ -214,27 +247,27 @@ export default function ProductsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3f4f6', padding: 16 },
+  container: { flex: 1, backgroundColor: '#F1F5F9', padding: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#1f2937' },
-  addBtn: { flexDirection: 'row', backgroundColor: '#0a4be5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#0F172A' },
+  addBtn: { flexDirection: 'row', backgroundColor: '#0052CC', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
   addBtnText: { color: '#fff', fontWeight: 'bold', marginLeft: 4 },
   card: { backgroundColor: '#fff', padding: 16, borderRadius: 10, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 1 },
-  name: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
-  subText: { fontSize: 13, color: '#6b7280', marginTop: 4 },
-  stockText: { fontSize: 13, color: '#059669', fontWeight: '600', marginTop: 4 },
+  name: { fontSize: 16, fontWeight: 'bold', color: '#0F172A' },
+  subText: { fontSize: 13, color: '#64748B', marginTop: 4 },
+  stockText: { fontSize: 13, color: '#14B8A6', fontWeight: '600', marginTop: 4 },
   price: { fontSize: 16, fontWeight: 'bold', color: '#2563eb' },
-  gstText: { fontSize: 12, color: '#9ca3af', marginTop: 4 },
-  actionButtons: { alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#f3f4f6', paddingLeft: 16 },
-  emptyText: { textAlign: 'center', color: '#6b7280', marginTop: 40 },
+  gstText: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
+  actionButtons: { alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#F1F5F9', paddingLeft: 16 },
+  emptyText: { textAlign: 'center', color: '#64748B', marginTop: 40 },
 
-  modalContainer: { flex: 1, backgroundColor: '#f3f4f6' },
+  modalContainer: { flex: 1, backgroundColor: '#F1F5F9' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#fff', elevation: 2 },
-  modalHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#1f2937' },
+  modalHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#0F172A' },
   formCard: { backgroundColor: '#fff', margin: 16, padding: 16, borderRadius: 12, elevation: 1 },
   label: { fontSize: 13, color: '#4b5563', marginBottom: 6, marginTop: 12 },
-  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 10, fontSize: 15, color: '#111827', backgroundColor: '#f9fafb' },
+  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 10, fontSize: 15, color: '#0F172A', backgroundColor: '#f9fafb' },
   row: { flexDirection: 'row' },
-  saveBtn: { backgroundColor: '#0a4be5', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
+  saveBtn: { backgroundColor: '#0052CC', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });
