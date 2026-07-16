@@ -1,0 +1,577 @@
+import { API_URL } from '../../config';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, TextInput, Alert, SafeAreaView, FlatList, ActivityIndicator, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
+
+export default function InvoicesScreen() {
+  const [modalVisible, setModalVisible] = useState(false);
+  const [invoices, setInvoices] = useState([]);
+  const [availableProducts, setAvailableProducts] = useState([]);
+  const [availableCustomers, setAvailableCustomers] = useState([]);
+  const [customerSearchFocused, setCustomerSearchFocused] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState(null);
+  const [isViewMode, setIsViewMode] = useState(false);
+
+  const [customerName, setCustomerName] = useState('');
+  const [discount, setDiscount] = useState('0');
+  const [amountPaid, setAmountPaid] = useState('');
+  const [previouslyPaid, setPreviouslyPaid] = useState(0);
+  const [items, setItems] = useState([
+    { id: '1', productName: '', qty: '1', price: '', gst: '0' }
+  ]);
+  const [activeSearchId, setActiveSearchId] = useState(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchInvoices();
+      fetchProducts();
+      fetchCustomers();
+    }, [])
+  );
+
+  const fetchInvoices = () => {
+    setLoading(true);
+    fetch(`${API_URL}/api/invoices`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if(data.success) setInvoices(data.data || []);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  };
+
+  const fetchProducts = () => {
+    fetch(`${API_URL}/api/products`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setAvailableProducts(data.data || []);
+      })
+      .catch(err => console.error(err));
+  };
+
+  const fetchCustomers = () => {
+    fetch(`${API_URL}/api/customers`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setAvailableCustomers(data.data || []);
+      })
+      .catch(err => console.error(err));
+  };
+
+  const sortMatches = (list, query, key) => {
+    if (!query) return [];
+    const q = query.toLowerCase();
+    return list.filter(item => item[key].toLowerCase().includes(q))
+      .sort((a, b) => {
+        const aStarts = a[key].toLowerCase().startsWith(q);
+        const bStarts = b[key].toLowerCase().startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return 0;
+      });
+  };
+
+  const openCreateModal = () => {
+    setEditingId(null);
+    setIsViewMode(false);
+    setCustomerName('');
+    setDiscount('0');
+    setAmountPaid('');
+    setPreviouslyPaid(0);
+    setItems([{ id: '1', productName: '', qty: '1', price: '', gst: '0' }]);
+    setActiveSearchId(null);
+    setCustomerSearchFocused(false);
+    setModalVisible(true);
+  };
+
+  const openEditModal = async (id, viewOnly = false) => {
+    try {
+      const res = await fetch(`${API_URL}/api/invoices/${id}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingId(id);
+        setIsViewMode(viewOnly);
+        setCustomerName(data.data.customer_name || '');
+        
+        // Calculate discount from saved totals since we don't store it explicitly
+        const savedSubtotal = Number(data.data.subtotal) || 0;
+        const savedTax = Number(data.data.total_gst) || 0;
+        const savedGrandTotal = Number(data.data.grand_total) || 0;
+        const calculatedDiscount = (savedSubtotal + savedTax) - savedGrandTotal;
+        setDiscount(calculatedDiscount > 0 ? calculatedDiscount.toFixed(2).toString() : '0');
+        
+        const savedAmountPaid = Number(data.data.amount_paid) || 0;
+        setPreviouslyPaid(savedAmountPaid);
+        setAmountPaid(''); // Reset new payment input so they can type the balance amount
+
+        setItems(data.data.items.length > 0 ? data.data.items : [{ id: '1', productName: '', qty: '1', price: '', gst: '0' }]);
+        setActiveSearchId(null);
+        setCustomerSearchFocused(false);
+        setModalVisible(true);
+      } else {
+        Alert.alert('Error', 'Failed to fetch invoice details');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Could not connect to server');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const executeDelete = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/invoices/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          fetchInvoices();
+        } else {
+          Alert.alert('Error', data.message || 'Failed to delete invoice');
+        }
+      } catch (error) {
+        Alert.alert('Error', 'Server connection failed');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to delete this invoice?')) {
+        executeDelete();
+      }
+    } else {
+      Alert.alert('Delete Invoice', 'Are you sure you want to delete this invoice?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: executeDelete }
+      ]);
+    }
+  };
+
+  const handleAddItem = () => {
+    setItems([...items, { id: Date.now().toString(), productName: '', qty: '1', price: '', gst: '0' }]);
+  };
+
+  const handleRemoveItem = (idToRemove) => {
+    if (items.length === 1) return;
+    setItems(items.filter(item => item.id !== idToRemove));
+  };
+
+  const handleItemChange = (id, field, value) => {
+    setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
+    if (field === 'productName') {
+      setActiveSearchId(id);
+    }
+  };
+
+  const selectProduct = (itemId, product) => {
+    setItems(items.map(item => 
+      item.id === itemId 
+        ? { ...item, productName: product.product_name, price: product.price.toString(), gst: (product.gst_percentage || 0).toString() } 
+        : item
+    ));
+    setActiveSearchId(null);
+  };
+
+  const subtotal = items.reduce((sum, item) => sum + (Number(item.qty) * Number(item.price) || 0), 0);
+  
+  const gstBreakdown = {};
+  items.forEach(item => {
+    const itemTotal = (Number(item.qty) * Number(item.price)) || 0;
+    const gstRate = Number(item.gst) || 0;
+    const itemTax = itemTotal * (gstRate / 100);
+    if (gstRate > 0) {
+      gstBreakdown[gstRate] = (gstBreakdown[gstRate] || 0) + itemTax;
+    }
+  });
+
+  const tax = Object.values(gstBreakdown).reduce((sum, val) => sum + val, 0);
+  const discountVal = Number(discount) || 0;
+  const grandTotal = subtotal - discountVal + tax;
+
+  const handleSave = async () => {
+    if (!customerName.trim()) {
+      Alert.alert('Validation Error', 'Please enter a customer name.');
+      return;
+    }
+    
+    const url = editingId 
+      ? `${API_URL}/api/invoices/${editingId}` 
+      : `${API_URL}/api/invoices`;
+    const method = editingId ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify((() => {
+          const totalPaid = previouslyPaid + (Number(amountPaid) || 0);
+          const balanceDue = grandTotal - totalPaid;
+          const paymentStatus = balanceDue <= 0 ? 'Paid' : 'Pending';
+          return {
+            customer_name: customerName,
+            subtotal,
+            tax,
+            grand_total: grandTotal,
+            payment_status: paymentStatus,
+            amount_paid: totalPaid,
+            balance_due: balanceDue <= 0 ? 0 : balanceDue,
+            items: items.filter(i => i.productName && Number(i.qty) > 0)
+          };
+        })())
+      });
+      const data = await res.json();
+      if (data.success) {
+        Alert.alert('Success', `Invoice ${editingId ? 'updated' : 'created'} successfully!`);
+        setModalVisible(false);
+        fetchInvoices(); 
+      } else {
+        Alert.alert('Error', data.message || 'Failed to save invoice');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Could not connect to server');
+    }
+  };
+
+  const renderInvoiceItem = ({ item }) => {
+    const date = new Date(item.invoice_date).toLocaleDateString();
+    return (
+      <TouchableOpacity style={styles.card} onPress={() => openEditModal(item.id, true)} activeOpacity={0.7}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>{item.invoice_number}</Text>
+          <Text style={styles.subText}>{item.customer_name || 'Walk-in Customer'}</Text>
+          <Text style={styles.dateText}>{date}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end', justifyContent: 'center', marginRight: 16 }}>
+          <Text style={styles.amount}>₹{Number(item.grand_total).toFixed(2)}</Text>
+          <Text style={[styles.statusBadge, item.payment_status === 'Paid' ? styles.statusPaid : styles.statusPending, { marginTop: 4, marginBottom: 4 }]}>
+            {item.payment_status || 'Pending'}
+          </Text>
+          {(Number(item.balance_due) > 0) && (
+            <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#dc2626' }}>Balance: ₹{Number(item.balance_due).toFixed(2)}</Text>
+          )}
+        </View>
+        <View style={styles.actionButtons}>
+          <Ionicons name="pencil" size={20} color="#0a4be5" style={{ marginBottom: 12 }} onPress={() => openEditModal(item.id, false)} />
+          <Ionicons name="trash" size={20} color="#ef4444" onPress={() => handleDelete(item.id)} />
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>All Invoices</Text>
+        <TouchableOpacity style={styles.addBtn} onPress={openCreateModal}>
+          <Ionicons name="add" size={20} color="#fff" />
+          <Text style={styles.addBtnText}>Create</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <ActivityIndicator size="large" color="#0a4be5" style={{marginTop: 50}} />
+      ) : invoices.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="document-text-outline" size={64} color="#d1d5db" />
+          <Text style={styles.emptyText}>No invoices generated yet.</Text>
+          <Text style={styles.emptySubText}>Click 'Create' to make your first sales invoice.</Text>
+        </View>
+      ) : (
+        <FlatList 
+          data={invoices}
+          keyExtractor={item => item.id}
+          renderItem={renderInvoiceItem}
+          contentContainerStyle={{ paddingBottom: 20 }}
+        />
+      )}
+
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
+          <ScrollView style={styles.modalContainer} keyboardShouldPersistTaps="handled">
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={28} color="#1f2937" />
+              </TouchableOpacity>
+              <Text style={styles.modalHeaderTitle}>{isViewMode ? 'View Invoice' : (editingId ? 'Edit Invoice' : 'New Invoice')}</Text>
+              <View style={{ width: 28 }} />
+            </View>
+
+            <View style={styles.formCard}>
+              <Text style={styles.sectionTitle}>Customer Details</Text>
+              <View style={{ marginBottom: 4 }}>
+                <Text style={styles.label}>Customer Name</Text>
+                <TextInput 
+                  style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} 
+                  placeholder="Start typing customer name..." 
+                  value={customerName} 
+                  onChangeText={setCustomerName}
+                  onFocus={() => { if(!isViewMode) setCustomerSearchFocused(true); }}
+                  editable={!isViewMode}
+                />
+                {/* Customer Autocomplete Dropdown */}
+                {(!isViewMode && customerSearchFocused) && (customerName ? sortMatches(availableCustomers, customerName, 'name') : availableCustomers).length > 0 && (
+                  <View style={styles.dropdown}>
+                    {(customerName ? sortMatches(availableCustomers, customerName, 'name') : availableCustomers).slice(0, 5).map(cust => (
+                      <TouchableOpacity key={cust.id} style={styles.dropdownItem} onPress={() => {
+                        setCustomerName(cust.name);
+                        setCustomerSearchFocused(false);
+                      }}>
+                        <Text style={styles.dropdownItemText}>{cust.name}</Text>
+                        <Text style={styles.dropdownItemSubtitle}>{cust.phone || cust.email || ''}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.formCard}>
+              <Text style={styles.sectionTitle}>Invoice Items</Text>
+              {items.map((item, index) => {
+                const searchResults = activeSearchId === item.id
+                  ? (item.productName ? sortMatches(availableProducts, item.productName, 'product_name') : availableProducts)
+                  : [];
+
+                return (
+                  <View key={item.id} style={styles.itemContainer}>
+                    <View style={styles.itemHeader}>
+                      <Text style={styles.itemNumber}>Item {index + 1}</Text>
+                      {(!isViewMode && items.length > 1) && (
+                        <TouchableOpacity onPress={() => handleRemoveItem(item.id)}>
+                          <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={styles.label}>Product</Text>
+                      <TextInput 
+                        style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} 
+                        placeholder="Start typing product name..." 
+                        value={item.productName} 
+                        onChangeText={(val) => handleItemChange(item.id, 'productName', val)}
+                        onFocus={() => { if(!isViewMode) setActiveSearchId(item.id); }}
+                        editable={!isViewMode}
+                      />
+                      {/* Autocomplete Dropdown */}
+                      {(!isViewMode && searchResults.length > 0) && (
+                        <View style={styles.dropdown}>
+                          {searchResults.slice(0, 5).map(prod => (
+                            <TouchableOpacity key={prod.id} style={styles.dropdownItem} onPress={() => selectProduct(item.id, prod)}>
+                              <Text style={styles.dropdownItemText}>{prod.product_name}</Text>
+                              <Text style={styles.dropdownItemPrice}>₹{prod.price}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.row}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.label}>Qty</Text>
+                        <TextInput 
+                          style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} placeholder="1" keyboardType="numeric" 
+                          value={item.qty} onChangeText={(val) => handleItemChange(item.id, 'qty', val)} 
+                          editable={!isViewMode}
+                        />
+                      </View>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.label}>Price (₹)</Text>
+                        <TextInput 
+                          style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} placeholder="0.00" keyboardType="numeric" 
+                          value={item.price} onChangeText={(val) => handleItemChange(item.id, 'price', val)} 
+                          editable={!isViewMode}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.label}>GST (%)</Text>
+                        <TextInput 
+                          style={[styles.input, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} placeholder="0" keyboardType="numeric" 
+                          value={item.gst} onChangeText={(val) => handleItemChange(item.id, 'gst', val)} 
+                          editable={!isViewMode}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+
+              {!isViewMode && (
+                <TouchableOpacity style={styles.addItemBtn} onPress={handleAddItem}>
+                  <Ionicons name="add-circle-outline" size={20} color="#0a4be5" />
+                  <Text style={styles.addItemText}>Add Another Item</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.formCard}>
+              <Text style={styles.sectionTitle}>Summary</Text>
+              
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryValue}>₹ {subtotal.toFixed(2)}</Text>
+              </View>
+              
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Discount</Text>
+                <TextInput 
+                  style={[styles.input, { width: 100, height: 35, padding: 4, textAlign: 'right', backgroundColor: '#fff' }, isViewMode && { backgroundColor: '#f3f4f6', color: '#6b7280' }]} 
+                  keyboardType="numeric"
+                  value={discount}
+                  onChangeText={setDiscount}
+                  editable={!isViewMode}
+                />
+              </View>
+
+              {Object.keys(gstBreakdown).length > 0 && (
+                <View style={{ marginTop: 12, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#6b7280', marginBottom: 4 }}>GST Breakdown</Text>
+                  <View style={{ borderTopWidth: 1, borderTopColor: '#e5e7eb', borderStyle: 'dashed', marginBottom: 6 }} />
+                  {Object.entries(gstBreakdown).map(([rate, amount]) => (
+                    <View key={rate} style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>{rate}% GST</Text>
+                      <Text style={styles.summaryValue}>₹ {Number(amount).toFixed(2)}</Text>
+                    </View>
+                  ))}
+                  <View style={{ borderTopWidth: 1, borderTopColor: '#e5e7eb', borderStyle: 'dashed', marginTop: 2, marginBottom: 8 }} />
+                </View>
+              )}
+
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { fontWeight: '600' }]}>Total GST</Text>
+                <Text style={[styles.summaryValue, { fontWeight: '600' }]}>₹ {tax.toFixed(2)}</Text>
+              </View>
+
+              <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: '#e5e7eb', paddingTop: 12, marginTop: 8 }]}>
+                <Text style={[styles.summaryLabel, { fontWeight: 'bold', color: '#111827' }]}>Grand Total</Text>
+                <Text style={[styles.summaryValue, { fontWeight: 'bold', color: '#0a4be5', fontSize: 18 }]}>
+                  ₹ {grandTotal.toFixed(2)}
+                </Text>
+              </View>
+
+              <View style={{ marginTop: 16, backgroundColor: '#f9fafb', padding: 12, borderRadius: 8 }}>
+                {previouslyPaid > 0 && (
+                  <View style={[styles.summaryRow, { marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }]}>
+                    <Text style={[styles.summaryLabel, { color: '#059669' }]}>Previously Paid</Text>
+                    <Text style={[styles.summaryValue, { color: '#059669' }]}>₹ {previouslyPaid.toFixed(2)}</Text>
+                  </View>
+                )}
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { fontWeight: '600' }]}>{previouslyPaid > 0 ? 'Add New Payment' : 'Amount Paid'}</Text>
+                  <TextInput 
+                    style={[styles.input, { width: 120, height: 40, padding: 8, textAlign: 'right', backgroundColor: '#fff', fontSize: 16 }]} 
+                    keyboardType="numeric"
+                    placeholder="0.00"
+                    value={amountPaid}
+                    onChangeText={setAmountPaid}
+                  />
+                </View>
+
+                <View style={[styles.summaryRow, { marginTop: 12 }]}>
+                  {(() => {
+                    const totalPaid = previouslyPaid + (Number(amountPaid) || 0);
+                    const balance = grandTotal - totalPaid;
+                    if (balance <= 0) {
+                      return (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', padding: 8, backgroundColor: '#dcfce7', borderRadius: 6 }}>
+                          <Ionicons name="checkmark-circle" size={20} color="#16a34a" style={{ marginRight: 6 }} />
+                          <Text style={{ fontWeight: 'bold', color: '#16a34a', fontSize: 16 }}>Payment Complete</Text>
+                        </View>
+                      );
+                    } else {
+                      return (
+                        <>
+                          <Text style={[styles.summaryLabel, { fontWeight: 'bold', color: '#dc2626' }]}>Balance Due</Text>
+                          <Text style={[styles.summaryValue, { fontWeight: 'bold', color: '#dc2626', fontSize: 16 }]}>
+                            ₹ {balance.toFixed(2)}
+                          </Text>
+                        </>
+                      );
+                    }
+                  })()}
+                </View>
+              </View>
+            </View>
+            {isViewMode ? (
+              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#16a34a', marginTop: 8 }]} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>Update Payment Only</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>{editingId ? 'Update Invoice' : 'Save Invoice'}</Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f3f4f6', padding: 16 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#1f2937' },
+  addBtn: { flexDirection: 'row', backgroundColor: '#0a4be5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
+  addBtnText: { color: '#fff', fontWeight: 'bold', marginLeft: 4 },
+  
+  card: { backgroundColor: '#fff', padding: 16, borderRadius: 10, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', elevation: 1 },
+  name: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+  subText: { fontSize: 14, color: '#4b5563', marginTop: 4 },
+  dateText: { fontSize: 12, color: '#9ca3af', marginTop: 4 },
+  price: { fontSize: 16, fontWeight: 'bold', color: '#2563eb' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, fontSize: 12, fontWeight: '600', marginTop: 8, overflow: 'hidden', textAlign: 'center' },
+  statusPaid: { backgroundColor: '#dcfce7', color: '#166534' },
+  statusPending: { backgroundColor: '#fef3c7', color: '#92400e' },
+  actionButtons: { alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#f3f4f6', paddingLeft: 16 },
+  
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { fontSize: 18, fontWeight: 'bold', color: '#4b5563', marginTop: 16 },
+  emptySubText: { fontSize: 14, color: '#9ca3af', marginTop: 8 },
+
+  modalContainer: { flex: 1, backgroundColor: '#f3f4f6' },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#fff', elevation: 2 },
+  modalHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#1f2937' },
+  formCard: { backgroundColor: '#fff', margin: 16, marginBottom: 0, padding: 16, borderRadius: 12, elevation: 1 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827', marginBottom: 16 },
+  label: { fontSize: 13, color: '#4b5563', marginBottom: 6 },
+  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 10, fontSize: 15, color: '#111827', backgroundColor: '#f9fafb' },
+  
+  dropdown: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, marginTop: 4, elevation: 3, zIndex: 10 },
+  dropdownItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  dropdownItemText: { fontSize: 15, color: '#111827' },
+  dropdownItemPrice: { fontSize: 14, color: '#059669', fontWeight: 'bold' },
+  dropdownItemSubtitle: { fontSize: 12, color: '#6b7280' },
+  
+  itemContainer: { marginBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', paddingBottom: 16 },
+  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  itemNumber: { fontSize: 14, fontWeight: 'bold', color: '#6b7280' },
+  row: { flexDirection: 'row' },
+  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderWidth: 1, borderColor: '#0a4be5', borderStyle: 'dashed', borderRadius: 8, marginTop: 8 },
+  addItemText: { color: '#0a4be5', fontWeight: '600', marginLeft: 8 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  summaryLabel: { color: '#4b5563', fontSize: 14 },
+  summaryValue: { color: '#111827', fontSize: 14, fontWeight: '500' },
+  saveBtn: { backgroundColor: '#0a4be5', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
+  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+});
