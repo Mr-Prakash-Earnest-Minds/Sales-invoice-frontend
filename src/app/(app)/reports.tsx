@@ -162,7 +162,6 @@ export default function ReportsScreen() {
       Alert.alert('Notice', 'No invoices match the current filter to export.');
       return;
     }
-
     const headers = ['Invoice Number', 'Date', 'Customer Name', 'Subtotal', 'Tax', 'Grand Total', 'Amount Paid', 'Balance Due', 'Status'];
     const rows = filteredInvoices.map(inv => [
       inv.invoice_number,
