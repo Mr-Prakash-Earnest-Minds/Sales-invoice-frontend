@@ -22,8 +22,6 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
     <View style={{
       flexDirection: 'row',
       backgroundColor: '#ffffff',
-      borderTopLeftRadius: 30,
-      borderTopRightRadius: 30,
       elevation: 15,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: -2 },
@@ -104,12 +102,20 @@ export default function AppLayout() {
   return (
     <Tabs 
       tabBar={props => <CustomTabBar {...props} />}
-      screenOptions={{ 
+      screenOptions={({ navigation }) => ({ 
         headerShown: true,
         headerStyle: { backgroundColor: '#18181A' },
         headerTintColor: '#fff',
         headerTitleAlign: 'center',
-      }}
+        headerLeft: () => (
+          <TouchableOpacity 
+            onPress={() => (navigation as any).openDrawer()}
+            style={{ paddingLeft: 16 }}
+          >
+            <Ionicons name="menu" size={28} color="#fff" />
+          </TouchableOpacity>
+        )
+      })}
     >
       <Tabs.Screen name="dashboard" options={{ title: 'Dashboard' }} />
       <Tabs.Screen name="products" options={{ title: 'Products' }} />
