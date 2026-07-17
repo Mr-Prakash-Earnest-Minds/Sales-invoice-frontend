@@ -1,7 +1,8 @@
-import { API_URL } from '../../config';
+import { API_URL, getAuthToken } from '../../config';
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LineChart } from 'react-native-chart-kit';
 import { useRouter, useFocusEffect } from 'expo-router';
 
 export default function DashboardScreen() {
@@ -12,7 +13,8 @@ export default function DashboardScreen() {
     totalCustomers: 0,
     totalProducts: 0,
     totalPending: 0,
-    recentActivity: []
+    recentActivity: [],
+    monthlyData: null
   });
   const [loading, setLoading] = useState(true);
 
@@ -25,7 +27,7 @@ export default function DashboardScreen() {
   const fetchDashboardStats = () => {
     setLoading(true);
     fetch(`${API_URL}/api/dashboard`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` }
     })
       .then(res => res.json())
       .then(data => {
@@ -43,7 +45,7 @@ export default function DashboardScreen() {
   if (loading) {
     return (
       <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC'}}>
-        <ActivityIndicator size="large" color="#004ac6" />
+        <ActivityIndicator size="large" color="#18181A" />
       </View>
     );
   }
@@ -60,12 +62,47 @@ export default function DashboardScreen() {
         <Text style={styles.title}>Dashboard</Text>
       </View>
 
+      {/* Monthly Chart */}
+      {stats.monthlyData && (
+        <View style={styles.chartSection}>
+          <Text style={styles.chartTitle}>Revenue - Current Month</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <LineChart
+              data={stats.monthlyData}
+              width={Dimensions.get("window").width > 500 ? Dimensions.get("window").width - 48 : 500}
+              height={220}
+              chartConfig={{
+                backgroundColor: "#fff",
+                backgroundGradientFrom: "#fff",
+                backgroundGradientTo: "#fff",
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(24, 24, 26, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(67, 70, 85, ${opacity})`,
+                style: {
+                  borderRadius: 16
+                },
+                propsForDots: {
+                  r: "4",
+                  strokeWidth: "2",
+                  stroke: "#18181A"
+                }
+              }}
+              bezier
+              style={{
+                marginVertical: 8,
+                borderRadius: 16
+              }}
+            />
+          </ScrollView>
+        </View>
+      )}
+
       <View style={styles.statsGrid}>
         {/* Total Revenue */}
         <View style={styles.statCard}>
           <View style={styles.statHeader}>
-            <View style={[styles.iconBox, { backgroundColor: 'rgba(0, 74, 198, 0.1)' }]}>
-              <Ionicons name="cash-outline" size={20} color="#004ac6" />
+            <View style={[styles.iconBox, { backgroundColor: 'rgba(24, 24, 26, 0.1)' }]}>
+              <Ionicons name="cash-outline" size={20} color="#18181A" />
             </View>
           </View>
           <Text style={styles.statLabel}>Total Revenue</Text>
@@ -152,7 +189,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC', // Surface bright
+    backgroundColor: '#F1F5F9', // Surface bright
     padding: 24,
   },
   header: {
@@ -163,7 +200,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24, // headline-md
     fontWeight: 'bold',
-    color: '#004ac6', // Primary
+    color: '#18181A', // Primary
   },
   statsGrid: {
     flexDirection: 'row',
@@ -172,17 +209,15 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '48%', // Approx half width for 2-column on mobile/tablet
-    backgroundColor: '#faf8ff',
+    backgroundColor: '#fff',
     padding: 24,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e1e2ed',
     marginBottom: 24,
-    elevation: 1,
+    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowRadius: 3,
   },
   statHeader: {
     flexDirection: 'row',
@@ -209,18 +244,33 @@ const styles = StyleSheet.create({
     color: '#191b23', // on-surface
     letterSpacing: -0.5,
   },
-  recentSection: {
-    backgroundColor: '#faf8ff',
+  chartSection: {
+    backgroundColor: '#fff',
+    padding: 24,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e1e2ed',
+    marginBottom: 32,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+  },
+  chartTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#191b23',
+    marginBottom: 16,
+  },
+  recentSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
     marginBottom: 32,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   recentHeader: {
     flexDirection: 'row',
@@ -237,7 +287,7 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#004ac6', // primary
+    color: '#18181A', // primary
   },
   recentList: {
     flexDirection: 'column',
@@ -249,8 +299,8 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingHorizontal: 24,
     borderTopWidth: 1,
-    borderTopColor: '#f3f3fe', // surface-container-low
-    backgroundColor: '#faf8ff',
+    borderTopColor: '#F1F5F9', // surface-container-low
+    backgroundColor: '#fff',
   },
   invoiceLeft: {
     flexDirection: 'row',
@@ -268,12 +318,13 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#004ac6',
+    color: '#18181A',
   },
   invoiceCustomerName: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#191b23',
+    textTransform: 'capitalize' as any
   },
   invoiceNumber: {
     fontSize: 12,

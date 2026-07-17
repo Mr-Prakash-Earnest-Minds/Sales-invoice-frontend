@@ -1,7 +1,8 @@
-import { API_URL } from '../../config';
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, TextInput, Alert, SafeAreaView, FlatList, ActivityIndicator, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { API_URL, getAuthToken } from '../../config';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, TextInput, Alert, FlatList, ActivityIndicator, Platform, Animated } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, FontAwesome6 } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 
 export default function InvoicesScreen() {
@@ -13,6 +14,7 @@ export default function InvoicesScreen() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [isViewMode, setIsViewMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [customerName, setCustomerName] = useState('');
   const [customerState, setCustomerState] = useState('');
@@ -26,6 +28,34 @@ export default function InvoicesScreen() {
   ]);
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
 
+  const AnimatedListItem = ({ children, index }: { children: any, index: number }) => {
+    const slideAnim = useRef(new Animated.Value(50)).current;
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+  
+    useEffect(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          delay: Math.min(index * 50, 500),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 400,
+          delay: Math.min(index * 50, 500),
+          useNativeDriver: true,
+        })
+      ]).start();
+    }, [index]);
+  
+    return (
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+        {children}
+      </Animated.View>
+    );
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchInvoices();
@@ -37,7 +67,7 @@ export default function InvoicesScreen() {
   const fetchInvoices = () => {
     setLoading(true);
     fetch(`${API_URL}/api/invoices`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` }
     })
       .then(res => res.json())
       .then(data => {
@@ -52,7 +82,7 @@ export default function InvoicesScreen() {
 
   const fetchProducts = () => {
     fetch(`${API_URL}/api/products`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` }
     })
       .then(res => res.json())
       .then(data => {
@@ -63,7 +93,7 @@ export default function InvoicesScreen() {
 
   const fetchCustomers = () => {
     fetch(`${API_URL}/api/customers`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` }
     })
       .then(res => res.json())
       .then(data => {
@@ -111,7 +141,7 @@ export default function InvoicesScreen() {
   const openEditModal = async (id: string | number, viewOnly = false) => {
     try {
       const res = await fetch(`${API_URL}/api/invoices/${id}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       const data = await res.json();
       if (data.success) {
@@ -126,7 +156,6 @@ export default function InvoicesScreen() {
         setPaymentMethod(data.data.payment_method || 'Cash');
         setRemarks(data.data.remarks || '');
         
-        // Calculate discount from saved totals since we don't store it explicitly
         const savedSubtotal = Number(data.data.subtotal) || 0;
         const savedTax = Number(data.data.total_gst) || 0;
         const savedGrandTotal = Number(data.data.grand_total) || 0;
@@ -135,7 +164,7 @@ export default function InvoicesScreen() {
         
         const savedAmountPaid = Number(data.data.amount_paid) || 0;
         setPreviouslyPaid(savedAmountPaid);
-        setAmountPaid(''); // Reset new payment input so they can type the balance amount
+        setAmountPaid('');
 
         setItems(data.data.items.length > 0 ? data.data.items : [{ id: '1', productName: '', qty: '1', price: '', gst: '0' }]);
         setActiveSearchId(null);
@@ -154,7 +183,7 @@ export default function InvoicesScreen() {
       try {
         const res = await fetch(`${API_URL}/api/invoices/${id}`, {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
         });
         const data = await res.json();
         if (data.success) {
@@ -218,7 +247,7 @@ export default function InvoicesScreen() {
 
   const tax = Object.values(gstBreakdown).reduce((sum: number, val: number) => sum + val, 0);
   
-  const companyState = 'Tamil Nadu'; // Set company state here
+  const companyState = 'Tamil Nadu'; 
   const isInterState = customerState && customerState.trim().toLowerCase() !== companyState.toLowerCase();
 
   const cgst = isInterState ? 0 : tax / 2;
@@ -259,7 +288,7 @@ export default function InvoicesScreen() {
         method,
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify((() => {
           const totalPaid = previouslyPaid + (Number(amountPaid) || 0);
@@ -297,44 +326,77 @@ export default function InvoicesScreen() {
     }
   };
 
-  const renderInvoiceItem = ({ item }: { item: any }) => {
+  const renderItem = ({ item, index }: { item: any, index: number }) => {
     const date = new Date(item.invoice_date).toLocaleDateString();
     return (
-      <TouchableOpacity style={styles.card} onPress={() => openEditModal(item.id, true)} activeOpacity={0.7}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.name}>{item.invoice_number}</Text>
-          <Text style={styles.subText}>{item.customer_name || 'Walk-in Customer'}</Text>
-          <Text style={styles.dateText}>{date}</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end', justifyContent: 'center', marginRight: 16 }}>
-          <Text style={styles.amount}>₹{Number(item.grand_total).toFixed(2)}</Text>
-          <Text style={[styles.statusBadge, item.payment_status === 'Paid' ? styles.statusPaid : styles.statusPending, { marginTop: 4, marginBottom: 4 }]}>
-            {item.payment_status || 'Pending'}
-          </Text>
-          {(Number(item.balance_due) > 0) && (
-            <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#dc2626' }}>Balance: ₹{Number(item.balance_due).toFixed(2)}</Text>
-          )}
-        </View>
-        <View style={styles.actionButtons}>
-          <Ionicons name="pencil" size={20} color="#0052CC" style={{ marginBottom: 12 }} onPress={() => openEditModal(item.id, false)} />
-          <Ionicons name="trash" size={20} color="#ef4444" onPress={() => handleDelete(item.id)} />
-        </View>
-      </TouchableOpacity>
+      <AnimatedListItem index={index}>
+        <TouchableOpacity style={styles.card} onPress={() => openEditModal(item.id, true)} activeOpacity={0.7}>
+          <View style={styles.cardHeader}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.name}>{item.invoice_number}</Text>
+              <Text style={[styles.statusBadge, item.payment_status === 'Paid' ? styles.statusPaid : styles.statusPending, { marginLeft: 8 }]}>
+                {item.payment_status || 'Pending'}
+              </Text>
+            </View>
+            <View style={styles.actionButtons}>
+              <FontAwesome6 name="pen-to-square" size={18} color="#18181A" style={{ marginRight: 16 }} onPress={() => openEditModal(item.id, false)} />
+              <FontAwesome6 name="trash-can" size={18} color="#ef4444" onPress={() => handleDelete(item.id)} />
+            </View>
+          </View>
+
+          <View style={styles.detailsBlockContainer}>
+            <View style={styles.detailRow}>
+              <Ionicons name="person-outline" size={16} color="#64748B" style={styles.detailIcon} />
+              <Text style={styles.detailText}>{item.customer_name || 'Walk-in Customer'}</Text>
+            </View>
+            
+            <View style={styles.detailRow}>
+              <Ionicons name="calendar-outline" size={16} color="#64748B" style={styles.detailIcon} />
+              <Text style={styles.detailText}>{date}</Text>
+            </View>
+
+            <View style={[styles.detailRow, { marginBottom: 0, justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8, marginTop: 4 }]}>
+              <Text style={styles.amountText}>Total: ₹{Number(item.grand_total).toFixed(2)}</Text>
+              {(Number(item.balance_due) > 0) ? (
+                <Text style={styles.balanceText}>Balance: ₹{Number(item.balance_due).toFixed(2)}</Text>
+              ) : null}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </AnimatedListItem>
     );
   };
+
+  const filteredInvoices = invoices.filter((inv: any) => 
+    (inv.invoice_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (inv.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (inv.payment_status || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>All Invoices</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={openCreateModal}>
-          <Ionicons name="add" size={20} color="#fff" />
-          <Text style={styles.addBtnText}>Create</Text>
-        </TouchableOpacity>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#64748B" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by invoice #, customer, or status..."
+          placeholderTextColor="#94A3B8"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Ionicons name="close-circle" size={20} color="#94A3B8" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#0052CC" style={{marginTop: 50}} />
+        <ActivityIndicator size="large" color="#18181A" style={{marginTop: 50}} />
       ) : invoices.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={64} color="#d1d5db" />
@@ -343,10 +405,11 @@ export default function InvoicesScreen() {
         </View>
       ) : (
         <FlatList 
-          data={invoices}
+          data={filteredInvoices}
           keyExtractor={item => item.id}
-          renderItem={renderInvoiceItem}
+          renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 20 }}
+          ListEmptyComponent={<Text style={[styles.emptyText, {textAlign: 'center', marginTop: 40}]}>No matching invoices found.</Text>}
         />
       )}
 
@@ -477,7 +540,7 @@ export default function InvoicesScreen() {
 
               {!isViewMode && (
                 <TouchableOpacity style={styles.addItemBtn} onPress={handleAddItem}>
-                  <Ionicons name="add-circle-outline" size={20} color="#0052CC" />
+                  <Ionicons name="add-circle-outline" size={20} color="#18181A" />
                   <Text style={styles.addItemText}>Add Another Item</Text>
                 </TouchableOpacity>
               )}
@@ -552,7 +615,7 @@ export default function InvoicesScreen() {
 
               <View style={styles.summaryRow}>
                 <Text style={[styles.summaryLabel, { fontWeight: 'bold', color: '#0F172A' }]}>Grand Total</Text>
-                <Text style={[styles.summaryValue, { fontWeight: 'bold', color: '#0052CC', fontSize: 18 }]}>
+                <Text style={[styles.summaryValue, { fontWeight: 'bold', color: '#18181A', fontSize: 18 }]}>
                   ₹ {grandTotal.toFixed(2)}
                 </Text>
               </View>
@@ -560,53 +623,61 @@ export default function InvoicesScreen() {
               <View style={{ marginTop: 16, backgroundColor: '#f9fafb', padding: 12, borderRadius: 8 }}>
                 <Text style={[styles.summaryLabel, { fontWeight: 'bold', marginBottom: 6 }]}>Payment Details</Text>
                 
-
                 {previouslyPaid > 0 && (
                   <View style={[styles.summaryRow, { marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }]}>
                     <Text style={[styles.summaryLabel, { color: '#14B8A6' }]}>Previously Paid</Text>
                     <Text style={[styles.summaryValue, { color: '#14B8A6' }]}>₹ {previouslyPaid.toFixed(2)}</Text>
                   </View>
                 )}
-                <View style={styles.summaryRow}>
-                  <Text style={[styles.summaryLabel, { fontWeight: '600' }]}>{previouslyPaid > 0 ? 'Add New Payment' : 'Amount Paid'}</Text>
-                  <TextInput placeholderTextColor="#94A3B8" 
-                    style={[styles.input, { width: 120, height: 40, padding: 8, textAlign: 'right', backgroundColor: '#fff', fontSize: 16 }]} 
-                    keyboardType="numeric"
-                    placeholder="0.00"
-                    value={amountPaid}
-                    onChangeText={setAmountPaid}
-                  />
-                </View>
+                
+                {/* Only show Add Payment if not fully paid yet */}
+                {(previouslyPaid < grandTotal || grandTotal === 0) && (
+                  <View style={styles.summaryRow}>
+                    <Text style={[styles.summaryLabel, { fontWeight: '600' }]}>{previouslyPaid > 0 ? 'Add New Payment' : 'Amount Paid'}</Text>
+                    <TextInput placeholderTextColor="#94A3B8" 
+                      style={[styles.input, { width: 120, height: 40, padding: 8, textAlign: 'right', backgroundColor: '#fff', fontSize: 16 }]} 
+                      keyboardType="numeric"
+                      placeholder="0.00"
+                      value={amountPaid}
+                      onChangeText={setAmountPaid}
+                    />
+                  </View>
+                )}
 
                 <View style={[styles.summaryRow, { marginTop: 12 }]}>
                   {(() => {
                     const totalPaid = previouslyPaid + (Number(amountPaid) || 0);
                     const balance = grandTotal - totalPaid;
-                    if (balance <= 0) {
+                    // Only show Payment Complete if it's an existing invoice that's fully paid
+                    if (editingId && previouslyPaid >= grandTotal && grandTotal > 0) {
                       return (
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', padding: 8, backgroundColor: '#dcfce7', borderRadius: 6 }}>
                           <Ionicons name="checkmark-circle" size={20} color="#16a34a" style={{ marginRight: 6 }} />
                           <Text style={{ fontWeight: 'bold', color: '#16a34a', fontSize: 16 }}>Payment Complete</Text>
                         </View>
                       );
-                    } else {
+                    } else if (grandTotal > 0) {
                       return (
                         <>
                           <Text style={[styles.summaryLabel, { fontWeight: 'bold', color: '#dc2626' }]}>Balance Due</Text>
                           <Text style={[styles.summaryValue, { fontWeight: 'bold', color: '#dc2626', fontSize: 16 }]}>
-                            ₹ {balance.toFixed(2)}
+                            ₹ {balance > 0 ? balance.toFixed(2) : '0.00'}
                           </Text>
                         </>
                       );
                     }
+                    return null;
                   })()}
                 </View>
               </View>
             </View>
             {isViewMode ? (
-              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#16a34a', marginTop: 8 }]} onPress={handleSave}>
-                <Text style={styles.saveBtnText}>Update Payment Only</Text>
-              </TouchableOpacity>
+              // Only show Update Payment button if it's not fully paid
+              (previouslyPaid < grandTotal) ? (
+                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#16a34a', marginTop: 8 }]} onPress={handleSave}>
+                  <Text style={styles.saveBtnText}>Update Payment Only</Text>
+                </TouchableOpacity>
+              ) : null
             ) : (
               <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
                 <Text style={styles.saveBtnText}>{editingId ? 'Update Invoice' : 'Save Invoice'}</Text>
@@ -615,6 +686,9 @@ export default function InvoicesScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      <TouchableOpacity style={styles.addBtn} onPress={openCreateModal}>
+        <Ionicons name="add" size={24} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -623,19 +697,24 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F5F9', padding: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   title: { fontSize: 20, fontWeight: 'bold', color: '#0F172A' },
-  addBtn: { flexDirection: 'row', backgroundColor: '#0052CC', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
-  addBtnText: { color: '#fff', fontWeight: 'bold', marginLeft: 4 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 12, marginBottom: 16, elevation: 1, height: 44 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 15, color: '#0F172A' },
+  addBtn: { position: 'absolute', right: 24, bottom: 96, backgroundColor: '#18181A', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 },
+  addBtnText: { display: 'none' },
   
-  card: { backgroundColor: '#fff', padding: 16, borderRadius: 10, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', elevation: 1 },
-  name: { fontSize: 16, fontWeight: 'bold', color: '#0F172A' },
-  subText: { fontSize: 14, color: '#4b5563', marginTop: 4 },
-  dateText: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
-  price: { fontSize: 16, fontWeight: 'bold', color: '#2563eb' },
-  amount: { fontSize: 16, fontWeight: 'bold', color: '#14B8A6' },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, fontSize: 12, fontWeight: '600', marginTop: 8, overflow: 'hidden', textAlign: 'center' },
+  card: { backgroundColor: '#fff', padding: 16, borderRadius: 10, marginBottom: 12, elevation: 1 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  name: { fontSize: 16, fontWeight: 'bold', color: '#0F172A', textTransform: 'capitalize' as any },
+  actionButtons: { flexDirection: 'row', alignItems: 'center', marginLeft: 12 },
+  detailsBlockContainer: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 8 },
+  detailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  detailIcon: { marginRight: 8 },
+  detailText: { fontSize: 14, color: '#4b5563' },
+  amountText: { fontSize: 15, fontWeight: 'bold', color: '#0F172A' },
+  balanceText: { fontSize: 14, fontWeight: 'bold', color: '#dc2626' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, fontSize: 12, fontWeight: '600', overflow: 'hidden', textAlign: 'center' },
   statusPaid: { backgroundColor: '#dcfce7', color: '#166534' },
   statusPending: { backgroundColor: '#fef3c7', color: '#92400e' },
-  actionButtons: { alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#F1F5F9', paddingLeft: 16 },
   
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 18, fontWeight: 'bold', color: '#4b5563', marginTop: 16 },
@@ -659,11 +738,11 @@ const styles = StyleSheet.create({
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   itemNumber: { fontSize: 14, fontWeight: 'bold', color: '#64748B' },
   row: { flexDirection: 'row' },
-  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderWidth: 1, borderColor: '#0052CC', borderStyle: 'dashed', borderRadius: 8, marginTop: 8 },
-  addItemText: { color: '#0052CC', fontWeight: '600', marginLeft: 8 },
+  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderWidth: 1, borderColor: '#18181A', borderStyle: 'dashed', borderRadius: 8, marginTop: 8 },
+  addItemText: { color: '#18181A', fontWeight: '600', marginLeft: 8 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   summaryLabel: { color: '#4b5563', fontSize: 14 },
   summaryValue: { color: '#0F172A', fontSize: 14, fontWeight: '500' },
-  saveBtn: { backgroundColor: '#0052CC', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
+  saveBtn: { backgroundColor: '#18181A', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });

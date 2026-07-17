@@ -1,6 +1,7 @@
-import { API_URL } from '../../config';
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, SafeAreaView, Modal, ScrollView, Alert, Platform } from 'react-native';
+import { API_URL, getAuthToken } from '../../config';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Modal, ScrollView, Alert, Platform, Animated } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as Print from 'expo-print';
@@ -25,6 +26,34 @@ export default function ReportsScreen() {
   
   // Export Modal State
   const [exportModalVisible, setExportModalVisible] = useState(false);
+  
+  const AnimatedListItem = ({ children, index }: { children: any, index: number }) => {
+    const slideAnim = useRef(new Animated.Value(50)).current;
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+  
+    useEffect(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          delay: Math.min(index * 50, 500),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 400,
+          delay: Math.min(index * 50, 500),
+          useNativeDriver: true,
+        })
+      ]).start();
+    }, [index]);
+  
+    return (
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+        {children}
+      </Animated.View>
+    );
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -35,7 +64,7 @@ export default function ReportsScreen() {
   const fetchInvoices = () => {
     setLoading(true);
     fetch(`${API_URL}/api/invoices`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` }
     })
       .then(res => res.json())
       .then(data => {
@@ -79,7 +108,7 @@ export default function ReportsScreen() {
   const exportPDF = async (item: any) => {
     try {
       const res = await fetch(`${API_URL}/api/invoices/${item.id}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       const data = await res.json();
       if (data.success) {
@@ -149,9 +178,15 @@ export default function ReportsScreen() {
             </body>
           </html>
         `;
-        const { uri } = await Print.printToFileAsync({ html });
+        const { uri, base64 } = await Print.printToFileAsync({ html, base64: true });
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri);
+          let shareUri = uri;
+          if (Platform.OS === 'android') {
+            const newUri = `${FileSystem.documentDirectory}Invoice_${fullInvoice.invoice_number}.pdf`;
+            await FileSystem.writeAsStringAsync(newUri, base64, { encoding: 'base64' });
+            shareUri = newUri;
+          }
+          await Sharing.shareAsync(shareUri, { UTI: 'public.pdf', mimeType: 'application/pdf', dialogTitle: 'Share Invoice PDF' });
         }
       } else {
         Alert.alert('Error', 'Could not load invoice details for PDF.');
@@ -218,7 +253,7 @@ export default function ReportsScreen() {
         const fileUri = `${FileSystem.documentDirectory}Sales_Report.xlsx`;
         await FileSystem.writeAsStringAsync(fileUri, excelBuffer, { encoding: FileSystem.EncodingType.Base64 });
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(fileUri);
+          await Sharing.shareAsync(fileUri, { UTI: 'public.spreadsheet', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dialogTitle: 'Share Excel Report' });
         }
       } catch (error) {
         console.error(error);
@@ -296,7 +331,7 @@ export default function ReportsScreen() {
         const fileUri = `${FileSystem.documentDirectory}Sales_Report.${extension}`;
         await FileSystem.writeAsStringAsync(fileUri, content, { encoding: FileSystem.EncodingType.UTF8 });
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(fileUri);
+          await Sharing.shareAsync(fileUri, { UTI: 'public.plain-text', mimeType, dialogTitle: 'Share Report File' });
         }
       } catch (error) {
         console.error(error);
@@ -308,7 +343,7 @@ export default function ReportsScreen() {
   const handleViewInvoice = async (item: any) => {
     try {
       const res = await fetch(`${API_URL}/api/invoices/${item.id}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       const data = await res.json();
       if (data.success) {
@@ -320,38 +355,48 @@ export default function ReportsScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.card} onPress={() => handleViewInvoice(item)} activeOpacity={0.7}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.invoiceNumber}>{item.invoice_number}</Text>
-        <Text style={styles.date}>{new Date(item.invoice_date).toLocaleDateString()}</Text>
-      </View>
-      <View style={styles.cardBody}>
-        <View>
+  const renderItem = ({ item, index }: { item: any, index: number }) => (
+    <AnimatedListItem index={index}>
+      <TouchableOpacity style={styles.card} onPress={() => handleViewInvoice(item)} activeOpacity={0.7}>
+        <View style={styles.cardHeader}>
           <Text style={styles.customerName}>{item.customer_name || 'Walk-in Customer'}</Text>
-          <Text style={[styles.statusBadge, item.payment_status === 'Paid' ? styles.statusPaid : styles.statusPending]}>
-            {item.payment_status || 'Pending'}
-          </Text>
+          <TouchableOpacity style={styles.exportIconBtn} onPress={() => exportPDF(item)}>
+            <Ionicons name="download-outline" size={20} color="#18181A" />
+          </TouchableOpacity>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.amount}>₹{Number(item.grand_total).toFixed(2)}</Text>
-          {(Number(item.balance_due) > 0) && (
-            <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#dc2626', marginBottom: 2 }}>Balance: ₹{Number(item.balance_due).toFixed(2)}</Text>
-          )}
-          <Text style={styles.tax}>GST: ₹{Number(item.total_gst).toFixed(2)}</Text>
+
+        <View style={styles.detailsBlockContainer}>
+          <View style={styles.detailRow}>
+            <Ionicons name="document-text-outline" size={16} color="#64748B" style={styles.detailIcon} />
+            <Text style={styles.detailText}>Invoice: {item.invoice_number}</Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Ionicons name="calendar-outline" size={16} color="#64748B" style={styles.detailIcon} />
+            <Text style={styles.detailText}>Date: {new Date(item.invoice_date).toLocaleDateString()}</Text>
+          </View>
+
+          <View style={[styles.detailRow, { marginBottom: 0, justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="cash-outline" size={16} color="#18181A" style={styles.detailIcon} />
+              <Text style={styles.priceText}>₹{Number(item.grand_total).toFixed(2)}</Text>
+            </View>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+               {(Number(item.balance_due) > 0) && (
+                 <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#dc2626' }}>Bal: ₹{Number(item.balance_due).toFixed(2)}</Text>
+               )}
+              <Text style={[styles.statusBadge, item.payment_status === 'Paid' ? styles.statusPaid : styles.statusPending]}>
+                {(item.payment_status || 'Pending').toUpperCase()}
+              </Text>
+            </View>
+          </View>
         </View>
-      </View>
-      <View style={{ borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 12, paddingTop: 12, flexDirection: 'row', justifyContent: 'flex-end' }}>
-        <TouchableOpacity style={styles.exportBtn} onPress={() => exportPDF(item)}>
-          <Ionicons name="download-outline" size={16} color="#0052CC" style={{ marginRight: 4 }} />
-          <Text style={styles.exportBtnText}>Export PDF</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </AnimatedListItem>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Invoice Reports</Text>
         <View style={styles.summaryBox}>
@@ -546,19 +591,19 @@ export default function ReportsScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F5F9' },
-  header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  header: { padding: 16, backgroundColor: '#fff', marginHorizontal: 16, marginTop: 16, borderRadius: 12, elevation: 1, marginBottom: 16 },
   title: { fontSize: 24, fontWeight: 'bold', color: '#0F172A', marginBottom: 12 },
   summaryBox: { backgroundColor: '#eff6ff', padding: 16, borderRadius: 12, borderLeftWidth: 4, borderLeftColor: '#0052CC' },
   summaryLabel: { fontSize: 13, color: '#3b82f6', fontWeight: '600', marginBottom: 4 },
   summaryAmount: { fontSize: 24, fontWeight: 'bold', color: '#1d4ed8' },
   
-  filterSection: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  filterSection: { padding: 16, backgroundColor: '#fff', marginHorizontal: 16, borderRadius: 12, elevation: 1, marginBottom: 16 },
   searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
   searchInput: { flex: 1, fontSize: 15, color: '#0F172A', outlineStyle: 'none' as any },
   
@@ -575,20 +620,20 @@ const styles = StyleSheet.create({
   exportCsvBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#14B8A6', paddingVertical: 12, borderRadius: 8, marginTop: 12 },
   exportCsvBtnText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
 
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 8 },
-  invoiceNumber: { fontSize: 14, fontWeight: 'bold', color: '#64748B' },
-  date: { fontSize: 13, color: '#94A3B8' },
-  cardBody: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  customerName: { fontSize: 16, fontWeight: 'bold', color: '#0F172A', marginBottom: 6 },
-  statusBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, fontSize: 12, fontWeight: 'bold', overflow: 'hidden' },
-  statusPaid: { backgroundColor: '#dcfce7', color: '#16a34a' },
-  statusPending: { backgroundColor: '#fef3c7', color: '#d97706' },
-  amount: { fontSize: 18, fontWeight: 'bold', color: '#0052CC', marginBottom: 4 },
-  tax: { fontSize: 12, color: '#64748B' },
+  card: { backgroundColor: '#fff', borderRadius: 10, padding: 16, marginBottom: 12, elevation: 1 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  customerName: { fontSize: 16, fontWeight: 'bold', color: '#0F172A', flex: 1, textTransform: 'capitalize' as any },
+  exportIconBtn: { padding: 4, marginLeft: 12 },
   
-  exportBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
-  exportBtnText: { fontSize: 12, fontWeight: 'bold', color: '#0052CC' },
+  detailsBlockContainer: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 8 },
+  detailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  detailIcon: { marginRight: 8 },
+  detailText: { fontSize: 14, color: '#4b5563' },
+  priceText: { fontSize: 15, fontWeight: 'bold', color: '#18181A' },
+  
+  statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, fontSize: 10, fontWeight: 'bold', overflow: 'hidden' },
+  statusPaid: { backgroundColor: '#DCFCE7', color: '#166534' },
+  statusPending: { backgroundColor: '#FEF3C7', color: '#92400E' },
 
   emptyText: { textAlign: 'center', color: '#64748B', marginTop: 32, fontSize: 15 },
 

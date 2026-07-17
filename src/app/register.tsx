@@ -17,26 +17,26 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
-export default function LoginScreen() {
+export default function RegisterScreen() {
   const router = useRouter();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+  const handleRegister = async () => {
+    if (!name || !email || !password) {
+      Alert.alert('Error', 'Please enter name, email and password');
       return;
     }
 
     setLoading(true);
     try {
-      console.log('API_URL IS:', API_URL); const response = await fetch(`${API_URL}/api/auth/login`, {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ name, email, password })
       });
 
       const data = await response.json();
@@ -47,7 +47,7 @@ export default function LoginScreen() {
         }
         router.replace('/(app)/dashboard');
       } else {
-        Alert.alert('Login Failed', data.message || 'Invalid credentials');
+        Alert.alert('Registration Failed', data.message || 'Error creating account');
       }
     } catch (error) {
       console.error(error);
@@ -74,10 +74,23 @@ export default function LoginScreen() {
             <Text style={styles.brandSubtitle}>Enterprise Sales Invoice Management</Text>
           </View>
 
-          {/* Login Card */}
+          {/* Register Card */}
           <View style={styles.card}>
-            <Text style={styles.welcomeTitle}>Welcome back</Text>
-            <Text style={styles.welcomeSubtitle}>Please enter your details to sign in</Text>
+            <Text style={styles.welcomeTitle}>Create an account</Text>
+            <Text style={styles.welcomeSubtitle}>Please enter your details to sign up</Text>
+
+            {/* Name Input */}
+            <Text style={styles.label}>Full Name</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="person-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="John Doe"
+                placeholderTextColor="#94A3B8"
+                value={name}
+                onChangeText={setName}
+              />
+            </View>
 
             {/* Email Input */}
             <Text style={styles.label}>Email Address</Text>
@@ -97,9 +110,6 @@ export default function LoginScreen() {
             {/* Password Input */}
             <View style={styles.passwordHeader}>
               <Text style={styles.label}>Password</Text>
-              <TouchableOpacity>
-                <Text style={styles.forgotPassword}>Forgot Password?</Text>
-              </TouchableOpacity>
             </View>
             <View style={styles.inputContainer}>
               <Ionicons name="lock-closed-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
@@ -121,35 +131,23 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Remember Me */}
-            <View style={styles.rememberContainer}>
-              <TouchableOpacity 
-                style={[styles.checkbox, rememberMe && styles.checkboxChecked]} 
-                onPress={() => setRememberMe(!rememberMe)}
-              >
-                {rememberMe && <Ionicons name="checkmark" size={14} color="#fff" />}
-              </TouchableOpacity>
-              <Text style={styles.rememberText}>Remember for 30 days</Text>
-            </View>
-
-            {/* Sign In Button */}
-            <TouchableOpacity style={styles.signInButton} onPress={handleLogin} disabled={loading}>
+            {/* Sign Up Button */}
+            <TouchableOpacity style={styles.signInButton} onPress={handleRegister} disabled={loading}>
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <View style={styles.signInButtonContent}>
-                  <Text style={styles.signInButtonText}>Sign In</Text>
+                  <Text style={styles.signInButtonText}>Sign Up</Text>
                   <Ionicons name="arrow-forward" size={18} color="#fff" style={{marginLeft: 8}} />
                 </View>
               )}
             </TouchableOpacity>
-
           </View>
 
           {/* Bottom Links */}
           <View style={styles.bottomSection}>
             <Text style={styles.noAccountText}>
-              Don't have an account? <Text style={styles.requestAccessText} onPress={() => router.push('/register')}>Register</Text>
+              Already have an account? <Text style={styles.requestAccessText} onPress={() => router.push('/')}>Sign In</Text>
             </Text>
           </View>
 
@@ -270,7 +268,7 @@ const styles = StyleSheet.create({
   forgotPassword: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#18181A',
+    color: '#0052CC',
   },
   rememberContainer: {
     flexDirection: 'row',
@@ -289,8 +287,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff'
   },
   checkboxChecked: {
-    backgroundColor: '#18181A',
-    borderColor: '#18181A',
+    backgroundColor: '#0052CC',
+    borderColor: '#0052CC',
   },
   rememberText: {
     fontSize: 14,

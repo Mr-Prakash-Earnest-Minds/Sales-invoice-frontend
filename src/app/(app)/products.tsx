@@ -1,16 +1,46 @@
-import { API_URL } from '../../config';
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Modal, SafeAreaView, ScrollView, TextInput, Alert, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { API_URL, getAuthToken } from '../../config';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Modal, SafeAreaView, ScrollView, TextInput, Alert, Platform, Animated } from 'react-native';
+import { Ionicons, FontAwesome6 } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 
 export default function ProductsScreen() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const AnimatedListItem = ({ children, index }: { children: any, index: number }) => {
+    const slideAnim = useRef(new Animated.Value(50)).current;
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+  
+    useEffect(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          delay: Math.min(index * 50, 500),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 400,
+          delay: Math.min(index * 50, 500),
+          useNativeDriver: true,
+        })
+      ]).start();
+    }, [index]);
+  
+    return (
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+        {children}
+      </Animated.View>
+    );
+  };
 
   // Form state
   const [editingId, setEditingId] = useState(null);
+  const [isViewMode, setIsViewMode] = useState(false);
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [price, setPrice] = useState('');
@@ -30,7 +60,7 @@ export default function ProductsScreen() {
   const fetchProducts = () => {
     setLoading(true);
     fetch(`${API_URL}/api/products`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` }
     })
       .then(res => res.json())
       .then(data => {
@@ -45,13 +75,15 @@ export default function ProductsScreen() {
 
   const openCreateModal = () => {
     setEditingId(null);
+    setIsViewMode(false);
     setName(''); setSku(''); setPrice(''); setGst('18'); setStock('0');
     setHsnCode(''); setUnit('pcs'); setCategory(''); setDescription('');
     setModalVisible(true);
   };
 
-  const openEditModal = (item: any) => {
+  const openEditModal = (item: any, viewOnly = false) => {
     setEditingId(item.id);
+    setIsViewMode(viewOnly);
     setName(item.product_name || '');
     setSku(item.sku || '');
     setPrice(item.price ? item.price.toString() : '');
@@ -69,7 +101,7 @@ export default function ProductsScreen() {
       try {
         const res = await fetch(`${API_URL}/api/products/${id}`, {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
         });
         const data = await res.json();
         if (data.success) {
@@ -114,7 +146,7 @@ export default function ProductsScreen() {
         method,
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({ 
           product_name: name, sku, price: Number(price), gst_rate: Number(gst), 
@@ -135,43 +167,82 @@ export default function ProductsScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.card} onPress={() => openEditModal(item)} activeOpacity={0.7}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name}>{item.product_name}</Text>
-        <Text style={styles.subText}>SKU: {item.sku}</Text>
-        <Text style={styles.stockText}>Stock: {item.stock_quantity || 0} {item.unit || 'pcs'}</Text>
-      </View>
-      <View style={{ alignItems: 'flex-end', justifyContent: 'center', marginRight: 16 }}>
-        <Text style={styles.price}>₹{item.price}</Text>
-        <Text style={styles.gstText}>+ {item.gst_rate || item.gst_percentage || 0}% GST</Text>
-      </View>
-      <View style={styles.actionButtons}>
-        <Ionicons name="pencil" size={20} color="#0052CC" style={{ marginBottom: 12 }} onPress={() => openEditModal(item)} />
-        <Ionicons name="trash" size={20} color="#ef4444" onPress={() => handleDelete(item.id)} />
-      </View>
-    </TouchableOpacity>
+  const renderItem = ({ item, index }: { item: any, index: number }) => (
+    <AnimatedListItem index={index}>
+      <TouchableOpacity style={styles.card} onPress={() => openEditModal(item, true)} activeOpacity={0.7}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.name}>{item.product_name}</Text>
+          <View style={styles.actionButtons}>
+            <FontAwesome6 name="pen-to-square" size={18} color="#18181A" style={{ marginRight: 16 }} onPress={() => openEditModal(item, false)} />
+            <FontAwesome6 name="trash-can" size={18} color="#ef4444" onPress={() => handleDelete(item.id)} />
+          </View>
+        </View>
+
+        <View style={styles.detailsBlockContainer}>
+          <View style={styles.detailRow}>
+            <Ionicons name="pricetag-outline" size={16} color="#64748B" style={styles.detailIcon} />
+            <Text style={styles.detailText}>SKU: {item.sku || 'N/A'}</Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Ionicons name="cube-outline" size={16} color="#64748B" style={styles.detailIcon} />
+            <Text style={styles.detailText}>Stock: {item.stock_quantity || 0} {item.unit || 'pcs'}</Text>
+          </View>
+
+          <View style={[styles.detailRow, { marginBottom: 0, justifyContent: 'space-between' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="cash-outline" size={16} color="#18181A" style={styles.detailIcon} />
+              <Text style={styles.priceText}>₹{item.price}</Text>
+            </View>
+            <Text style={styles.gstBadge}>+ {item.gst_rate || item.gst_percentage || 0}% GST</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </AnimatedListItem>
+  );
+
+  const filteredProducts = products.filter((p: any) => 
+    (p.product_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.sku || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.category || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Inventory</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={openCreateModal}>
-          <Ionicons name="add" size={20} color="#fff" />
-          <Text style={styles.addBtnText}>Add</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={styles.title}>Inventory</Text>
+          <View style={{ backgroundColor: '#e2e8f0', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 8 }}>
+            <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#475569' }}>{products.length}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#64748B" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search products, SKU or category..."
+          placeholderTextColor="#94A3B8"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Ionicons name="close-circle" size={20} color="#94A3B8" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#0052CC" style={{marginTop: 50}} />
+        <ActivityIndicator size="large" color="#18181A" style={{marginTop: 50}} />
       ) : (
         <FlatList 
-          data={products}
+          data={filteredProducts}
           keyExtractor={item => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 20 }}
-          ListEmptyComponent={<Text style={styles.emptyText}>No products found.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery ? 'No matching products found.' : 'No products found.'}</Text>}
         />
       )}
 
@@ -188,60 +259,99 @@ export default function ProductsScreen() {
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={28} color="#0F172A" />
               </TouchableOpacity>
-              <Text style={styles.modalHeaderTitle}>{editingId ? 'Edit Product' : 'Add New Product'}</Text>
+              <Text style={styles.modalHeaderTitle}>
+                {isViewMode ? 'View Product' : (editingId ? 'Edit Product' : 'Add New Product')}
+              </Text>
               <View style={{ width: 28 }} />
             </View>
 
             <View style={styles.formCard}>
-              <Text style={styles.label}>Product Name *</Text>
-              <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. Mechanical Keyboard" value={name} onChangeText={setName} />
+              {isViewMode ? (
+                <View style={{ padding: 8 }}>
+                  <Text style={styles.label}>Product Details</Text>
+                  <Text style={{ fontSize: 16, color: '#0F172A', marginBottom: 4 }}>{name}</Text>
+                  <Text style={{ fontSize: 14, color: '#64748B', marginBottom: 12 }}>
+                    SKU: {sku || 'N/A'} • HSN: {hsnCode || 'N/A'}
+                  </Text>
+                  
+                  <Text style={styles.label}>Pricing & Tax</Text>
+                  <Text style={{ fontSize: 14, color: '#64748B', marginBottom: 12 }}>
+                    Price: ₹{price} • GST: {gst}%
+                  </Text>
 
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.label}>Price (₹) *</Text>
-                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="0.00" keyboardType="numeric" value={price} onChangeText={setPrice} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>GST (%)</Text>
-                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="18" keyboardType="numeric" value={gst} onChangeText={setGst} />
-                </View>
-              </View>
+                  <Text style={styles.label}>Inventory</Text>
+                  <Text style={{ fontSize: 14, color: '#64748B', marginBottom: 12 }}>
+                    Stock: {stock} {unit}
+                  </Text>
 
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.label}>SKU (Optional)</Text>
-                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="PRD-001" value={sku} onChangeText={setSku} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Initial Stock</Text>
-                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="0" keyboardType="numeric" value={stock} onChangeText={setStock} />
-                </View>
-              </View>
+                  <Text style={styles.label}>Category</Text>
+                  <Text style={{ fontSize: 14, color: '#64748B', marginBottom: 12 }}>
+                    {category || 'Uncategorized'}
+                  </Text>
 
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.label}>HSN Code</Text>
-                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. 8471" value={hsnCode} onChangeText={setHsnCode} />
+                  <Text style={styles.label}>Description</Text>
+                  <Text style={{ fontSize: 14, color: '#64748B' }}>
+                    {description || 'No description provided.'}
+                  </Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Unit</Text>
-                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="pcs, kg, ltr" value={unit} onChangeText={setUnit} />
-                </View>
-              </View>
+              ) : (
+                <>
+                  <Text style={styles.label}>Product Name *</Text>
+                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. Mechanical Keyboard" value={name} onChangeText={setName} />
 
-              <Text style={styles.label}>Category</Text>
-              <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. Electronics" value={category} onChangeText={setCategory} />
+                  <View style={styles.row}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.label}>Price (₹) *</Text>
+                      <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="0.00" keyboardType="numeric" value={price} onChangeText={setPrice} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>GST (%)</Text>
+                      <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="18" keyboardType="numeric" value={gst} onChangeText={setGst} />
+                    </View>
+                  </View>
 
-              <Text style={styles.label}>Description</Text>
-              <TextInput placeholderTextColor="#94A3B8" style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]} placeholder="Product details..." multiline value={description} onChangeText={setDescription} />
+                  <View style={styles.row}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.label}>SKU (Optional)</Text>
+                      <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="PRD-001" value={sku} onChangeText={setSku} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>Initial Stock</Text>
+                      <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="0" keyboardType="numeric" value={stock} onChangeText={setStock} />
+                    </View>
+                  </View>
+
+                  <View style={styles.row}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.label}>HSN Code</Text>
+                      <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. 8471" value={hsnCode} onChangeText={setHsnCode} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>Unit</Text>
+                      <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="pcs, kg, ltr" value={unit} onChangeText={setUnit} />
+                    </View>
+                  </View>
+
+                  <Text style={styles.label}>Category</Text>
+                  <TextInput placeholderTextColor="#94A3B8" style={styles.input} placeholder="e.g. Electronics" value={category} onChangeText={setCategory} />
+
+                  <Text style={styles.label}>Description</Text>
+                  <TextInput placeholderTextColor="#94A3B8" style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]} placeholder="Product details..." multiline value={description} onChangeText={setDescription} />
+                </>
+              )}
             </View>
 
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>{editingId ? 'Update Product' : 'Save Product'}</Text>
-            </TouchableOpacity>
+            {!isViewMode && (
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>{editingId ? 'Update Product' : 'Save Product'}</Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      <TouchableOpacity style={styles.addBtn} onPress={openCreateModal}>
+        <Ionicons name="add" size={24} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -250,15 +360,20 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F5F9', padding: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   title: { fontSize: 20, fontWeight: 'bold', color: '#0F172A' },
-  addBtn: { flexDirection: 'row', backgroundColor: '#0052CC', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
-  addBtnText: { color: '#fff', fontWeight: 'bold', marginLeft: 4 },
-  card: { backgroundColor: '#fff', padding: 16, borderRadius: 10, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 1 },
-  name: { fontSize: 16, fontWeight: 'bold', color: '#0F172A' },
-  subText: { fontSize: 13, color: '#64748B', marginTop: 4 },
-  stockText: { fontSize: 13, color: '#14B8A6', fontWeight: '600', marginTop: 4 },
-  price: { fontSize: 16, fontWeight: 'bold', color: '#2563eb' },
-  gstText: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
-  actionButtons: { alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#F1F5F9', paddingLeft: 16 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 12, marginBottom: 16, elevation: 1, height: 44 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 15, color: '#0F172A' },
+  addBtn: { position: 'absolute', right: 24, bottom: 96, backgroundColor: '#18181A', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 },
+  addBtnText: { display: 'none' },
+  card: { backgroundColor: '#fff', padding: 16, borderRadius: 10, marginBottom: 12, elevation: 1 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  name: { fontSize: 16, fontWeight: 'bold', color: '#0F172A', flex: 1, textTransform: 'capitalize' as any },
+  actionButtons: { flexDirection: 'row', alignItems: 'center', marginLeft: 12 },
+  detailsBlockContainer: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 8 },
+  detailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  detailIcon: { marginRight: 8 },
+  detailText: { fontSize: 14, color: '#4b5563' },
+  priceText: { fontSize: 15, fontWeight: 'bold', color: '#18181A' },
+  gstBadge: { fontSize: 12, color: '#059669', backgroundColor: '#d1fae5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, fontWeight: '600', overflow: 'hidden' },
   emptyText: { textAlign: 'center', color: '#64748B', marginTop: 40 },
 
   modalContainer: { flex: 1, backgroundColor: '#F1F5F9' },
@@ -268,6 +383,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, color: '#4b5563', marginBottom: 6, marginTop: 12 },
   input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 10, fontSize: 15, color: '#0F172A', backgroundColor: '#f9fafb' },
   row: { flexDirection: 'row' },
-  saveBtn: { backgroundColor: '#0052CC', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
+  saveBtn: { backgroundColor: '#18181A', margin: 16, padding: 16, borderRadius: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });
